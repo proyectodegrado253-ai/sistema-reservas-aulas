@@ -173,8 +173,9 @@ export default function LoginPage() {
                 </Link>
               </div>
 
-              <Link href="/" className="text-link back-link">
-                Volver al inicio
+              <Link href="/" className="back-link" aria-label="Volver al inicio">
+                <span aria-hidden="true">←</span>
+                <span>Volver al inicio</span>
               </Link>
             </form>
           </div>
