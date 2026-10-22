@@ -18,7 +18,7 @@
 
 La versión funcional del sistema está disponible en:
 
-**https://sistema-reservas-aulas-fkhm.vercel.app/login**
+**[https://sistema-reservas-aulas-fkhm.vercel.app/login](https://sistema-reservas-aulas-fkhm.vercel.app/)**
 
 > Este prototipo permite visualizar la lógica de negocio, el flujo de autenticación, la gestión de reservas y los paneles por rol en un entorno web moderno.
 
