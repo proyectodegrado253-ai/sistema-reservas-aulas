@@ -98,6 +98,7 @@ export default function ReservasPage() {
   const [saving, setSaving] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<{ start: string; end: string } | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [currentTime, setCurrentTime] = useState<Date | null>(null);
 
   const role = typeof window !== "undefined" ? localStorage.getItem("session-role") : "Profesor";
   const currentUserId = typeof window !== "undefined" ? Number(localStorage.getItem("session-user-id") ?? 0) : 0;
@@ -106,6 +107,14 @@ export default function ReservasPage() {
   const currentUserName = currentUser
     ? `${currentUser.nombre ?? ""} ${currentUser.apellido ?? ""}`.trim()
     : (typeof window !== "undefined" ? localStorage.getItem("session-name") : null) || "Profesor";
+
+  const isOwnedByCurrentTeacher = (reserva: ReservaRecord) => {
+    if (isAdmin) {
+      return true;
+    }
+
+    return Number(reserva.id_usuario) === Number(currentUserId);
+  };
 
   const availabilitySummary = useMemo(() => {
     const activeStart = form.hora_inicio || selectedSlot?.start || "09:00";
@@ -141,8 +150,45 @@ export default function ReservasPage() {
     });
   }, [usuarios]);
 
+  useEffect(() => {
+    const tick = window.setInterval(() => {
+      setCurrentTime(new Date());
+    }, 30000);
+
+    return () => window.clearInterval(tick);
+  }, []);
+
   const normalizeText = (value: string | null | undefined) =>
     (value ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+
+  const getReservationState = (reservation: ReservaRecord, now: Date) => {
+    const startAt = new Date(`${reservation.fecha_reserva}T${reservation.hora_inicio}:00`);
+    const endAt = new Date(`${reservation.fecha_reserva}T${reservation.hora_fin}:00`);
+    const diffMinutes = Math.round((startAt.getTime() - now.getTime()) / 60000);
+    const isToday = reservation.fecha_reserva === now.toISOString().slice(0, 10);
+
+    if (!isToday) {
+      return { label: reservation.estado, tone: reservation.estado.toLowerCase(), isActive: false };
+    }
+
+    if (now >= startAt && now <= endAt) {
+      return { label: "RESERVA EN CURSO (INICIAR SEGUIMIENTO)", tone: "active", isActive: true };
+    }
+
+    if (diffMinutes > 0 && diffMinutes <= 15) {
+      return { label: `Faltan ${diffMinutes} min`, tone: "warning", isActive: false };
+    }
+
+    if (diffMinutes > 0) {
+      return { label: `Faltan ${diffMinutes} min`, tone: "upcoming", isActive: false };
+    }
+
+    if (now > endAt) {
+      return { label: "Finalizada", tone: "cancelada", isActive: false };
+    }
+
+    return { label: reservation.estado, tone: reservation.estado.toLowerCase(), isActive: false };
+  };
 
   const loadData = async () => {
     const savedReservas = JSON.parse(localStorage.getItem("cache-reservas") ?? "null") as ReservaRecord[] | null;
@@ -180,7 +226,7 @@ export default function ReservasPage() {
       const nextReservas = (reservasResult.data as ReservaRecord[] | null)?.length ? (reservasResult.data as ReservaRecord[]) : [];
       const visibleReservas = currentRole === "Superadministrador"
         ? nextReservas
-        : nextReservas.filter((reserva) => Number(reserva.id_usuario) === Number(currentUserIdFromStorage) || reserva.estado === "Aprobada" || reserva.estado === "Pendiente");
+        : nextReservas.filter((reserva) => Number(reserva.id_usuario) === Number(currentUserIdFromStorage));
 
       localStorage.setItem("cache-usuarios", JSON.stringify(nextUsuarios));
       localStorage.setItem("cache-aulas", JSON.stringify(nextAulas));
@@ -220,8 +266,8 @@ export default function ReservasPage() {
 
   const visibleReservas = useMemo(() => {
     if (isAdmin) return reservas;
-    return reservas.filter((reserva) => Number(reserva.id_usuario) === Number(currentUserId) || reserva.estado === "Aprobada" || reserva.estado === "Pendiente");
-  }, [reservas, isAdmin, currentUserId]);
+    return reservas.filter((reserva) => isOwnedByCurrentTeacher(reserva));
+  }, [reservas, isAdmin, currentUserId, isOwnedByCurrentTeacher]);
 
   const filteredReservas = useMemo(() => {
     const query = normalizeText(search);
@@ -246,6 +292,22 @@ export default function ReservasPage() {
     const start = (currentPage - 1) * 5;
     return filteredReservas.slice(start, start + 5);
   }, [filteredReservas, currentPage]);
+
+  const todayKey = currentTime ? currentTime.toISOString().slice(0, 10) : "";
+  const monthKey = currentTime ? currentTime.toISOString().slice(0, 7) : "";
+
+  const teacherReservations = useMemo(
+    () => visibleReservas.filter((reserva) => Number(reserva.id_usuario) === Number(currentUserId)),
+    [visibleReservas, currentUserId],
+  );
+
+  const nextTeacherReservation = useMemo(() => {
+    return [...teacherReservations].sort((a, b) => {
+      const aValue = `${a.fecha_reserva}T${a.hora_inicio}`;
+      const bValue = `${b.fecha_reserva}T${b.hora_inicio}`;
+      return aValue.localeCompare(bValue);
+    })[0];
+  }, [teacherReservations]);
 
   const getCurrentUserLabel = () => {
     const userName = currentUserName || "Profesor";
@@ -429,6 +491,25 @@ export default function ReservasPage() {
               </div>
             </div>
 
+            <div className="stat-compact-panel">
+              <div className="stat-compact-item">
+                <span>Total Reservas Mes</span>
+                <strong>{monthKey ? teacherReservations.filter((reserva) => reserva.fecha_reserva.startsWith(monthKey)).length : 0}</strong>
+              </div>
+              <div className="stat-compact-item success">
+                <span>Reservas Aprobadas</span>
+                <strong>{teacherReservations.filter((reserva) => reserva.estado === "Aprobada").length}</strong>
+              </div>
+              <div className="stat-compact-item warning">
+                <span>Reservas Pendientes</span>
+                <strong>{teacherReservations.filter((reserva) => reserva.estado === "Pendiente").length}</strong>
+              </div>
+              <div className="stat-compact-item info">
+                <span>Próxima Aula</span>
+                <strong>{nextTeacherReservation?.aulas?.nombre_aula ?? "Sin reserva"}</strong>
+              </div>
+            </div>
+
             <div className="user-readonly-card">
               <div className="user-readonly-icon">👤</div>
               <div>
@@ -544,6 +625,35 @@ export default function ReservasPage() {
               </div>
             </div>
 
+            {(() => {
+              const todayDate = todayKey;
+              const nextTodayReservation = todayDate
+                ? [...visibleReservas]
+                    .filter((reserva) => reserva.fecha_reserva === todayDate)
+                    .sort((a, b) => `${a.fecha_reserva}T${a.hora_inicio}`.localeCompare(`${b.fecha_reserva}T${b.hora_inicio}`))[0]
+                : null;
+
+              if (!nextTodayReservation) {
+                return null;
+              }
+
+              return (
+                <div className="upcoming-reminder-card">
+                  <div className="reminder-pill">RECORDATORIO</div>
+                  <div className="reminder-body">
+                    <div>
+                      <p>Tu próxima reserva es HOY</p>
+                      <strong>{nextTodayReservation.aulas?.nombre_aula ?? "Aula no disponible"}</strong>
+                    </div>
+                    <span>{nextTodayReservation.fecha_reserva} · {nextTodayReservation.hora_inicio} - {nextTodayReservation.hora_fin}</span>
+                  </div>
+                  <button type="button" className="secondary-button compact" onClick={() => setSearch(nextTodayReservation.aulas?.nombre_aula ?? "")}>
+                    Ver detalle
+                  </button>
+                </div>
+              );
+            })()}
+
             <div className="table-wrap">
               <table>
                 <thead>
@@ -557,27 +667,34 @@ export default function ReservasPage() {
                 </thead>
                 <tbody>
                   {paginatedReservas.length ? (
-                    paginatedReservas.map((reserva) => (
-                      <tr key={reserva.id_reserva}>
-                        <td>{reserva.usuarios?.nombre ?? ""} {reserva.usuarios?.apellido ?? ""}</td>
-                        <td>{reserva.aulas?.nombre_aula ?? "Sin aula"}</td>
-                        <td>
-                          {reserva.fecha_reserva} · {reserva.hora_inicio} - {reserva.hora_fin}
-                        </td>
-                        <td>
-                          <span className={`status ${reserva.estado.toLowerCase()}`}>
-                            {reserva.estado}
-                          </span>
-                        </td>
-                        <td>
-                          <ActionMenu
-                            items={[
-                              { label: "Editar", onClick: () => handleEdit(reserva) },
-                            ]}
-                          />
-                        </td>
-                      </tr>
-                    ))
+                    paginatedReservas.map((reserva) => {
+                      const liveState = currentTime
+                        ? getReservationState(reserva, currentTime)
+                        : { label: reserva.estado, tone: reserva.estado.toLowerCase(), isActive: false };
+                      const teacherName = `${reserva.usuarios?.nombre ?? ""} ${reserva.usuarios?.apellido ?? ""}`.trim() || "Docente";
+
+                      return (
+                        <tr key={reserva.id_reserva} className={liveState.isActive ? "row-live" : ""}>
+                          <td>{isAdmin ? teacherName : currentUserName}</td>
+                          <td>{reserva.aulas?.nombre_aula ?? "Sin aula"}</td>
+                          <td>
+                            {reserva.fecha_reserva} · {reserva.hora_inicio} - {reserva.hora_fin}
+                          </td>
+                          <td>
+                            <span className={`status ${liveState.tone}`}>
+                              {liveState.label}
+                            </span>
+                          </td>
+                          <td>
+                            <ActionMenu
+                              items={[
+                                { label: "Editar", onClick: () => handleEdit(reserva) },
+                              ]}
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })
                   ) : (
                     <tr>
                       <td colSpan={5} className="empty-state">
