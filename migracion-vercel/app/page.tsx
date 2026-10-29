@@ -28,14 +28,23 @@ const features = [
   },
 ];
 
-const creators = [
-  { initials: "NC", name: "Nombre del creador", role: "Desarrollador / Coordinador", photo: "/default-avatar.svg" },
-  { initials: "DP", name: "Nombre del creador", role: "Diseño / UX", photo: "/default-avatar.svg" },
-  { initials: "MG", name: "Nombre del creador", role: "Gestión académica", photo: "/default-avatar.svg" },
+const creatorNames = [
+  "Maureen Yepes",
+  "Hassly Menco",
+  "Keisha Payares",
+  "Juan Sebastian Rodriguez",
+];
+
+const surveyData = [
+  { label: "Reducción de conflictos", value: 91, tone: "#2563eb" },
+  { label: "Ahorro de tiempo", value: 86, tone: "#10b981" },
+  { label: "Facilidad de uso", value: 81, tone: "#8b5cf6" },
 ];
 
 export default function HomePage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [activeSurvey, setActiveSurvey] = useState(0);
+  const activeMetric = surveyData[activeSurvey];
 
   return (
     <main className="landing-shell landing-page" id="top">
@@ -91,8 +100,7 @@ export default function HomePage() {
                 <span>simple, ordenada y profesional.</span>
               </h1>
               <p className="hero-subtitle">
-                Organiza el uso del espacio académico con un flujo claro para docentes,
-                administradores y coordinación universitaria.
+                Organiza el uso del espacio académico con un flujo claro para docentes, administradores y coordinación universitaria.
               </p>
 
               <div className="hero-actions">
@@ -126,6 +134,31 @@ export default function HomePage() {
               </div>
               <span className="floating-pill pill-top">Disponible</span>
               <span className="floating-pill pill-bottom">Control académico</span>
+            </div>
+          </div>
+        </section>
+
+        <section id="equipo" className="creator-banner">
+          <div className="section-heading creator-heading">
+            <span className="eyebrow">Proyecto</span>
+            <h2>Creadores del Proyecto</h2>
+          </div>
+
+          <div className="creator-grid">
+            <div className="creator-list">
+              <ul>
+                {creatorNames.map((name) => (
+                  <li key={name}>{name}</li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="creator-photo-card">
+              <img src="/creator-group.png" alt="Grupo de creadores del proyecto" />
+            </div>
+
+            <div className="creator-photo-card">
+              <img src="/presentation-event.png" alt="Foto de evento de presentación" />
             </div>
           </div>
         </section>
@@ -198,32 +231,44 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section id="equipo" className="team-section">
-          <div className="section-heading">
-            <span className="eyebrow">Equipo</span>
-            <h2>Creadores</h2>
+        <section className="survey-panel" aria-label="Encuestas sobre gestión de aulas">
+          <div className="survey-header">
+            <div>
+              <span className="eyebrow">Encuestas</span>
+              <h2>Impacto del sistema en la gestión académica</h2>
+            </div>
+            <span className="survey-pill">Resultados</span>
           </div>
 
-          <div className="team-grid">
-            {creators.map((person) => (
-              <article key={person.initials} className="member-card">
-                <img src={person.photo} alt={person.name} className="member-photo" aria-label={person.name} />
-                <h3>{person.name}</h3>
-                <p>{person.role}</p>
-              </article>
-            ))}
-          </div>
-        </section>
+          <div className="survey-layout">
+            <div className="survey-bars" aria-label="Gráfico de resultados">
+              {surveyData.map((item, index) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  className={`survey-bar ${index === activeSurvey ? "is-active" : ""}`}
+                  onMouseEnter={() => setActiveSurvey(index)}
+                  onFocus={() => setActiveSurvey(index)}
+                  onClick={() => setActiveSurvey(index)}
+                >
+                  <span className="survey-label">{item.label}</span>
+                  <span className="survey-track" aria-hidden="true">
+                    <span className="survey-fill" style={{ width: `${item.value}%`, background: item.tone }} />
+                  </span>
+                  <span className="survey-value">{item.value}%</span>
+                </button>
+              ))}
+            </div>
 
-        <section className="prototype-note" aria-label="Aviso de prototipo académico">
-          <span className="eyebrow">Aviso importante</span>
-          <h3>Prototipo académico — no oficial</h3>
-          <p>
-            Este proyecto fue desarrollado como prototipo de investigación y práctica académica para fines educativos,
-            demostrativos y de evaluación estudiantil. No representa ni sustituye la identidad oficial, institucional
-            ni administrativa de la institución. Se utilizan logotipos, imágenes y referencias visuales con fines
-            pedagógicos y de presentación del trabajo académico.
-          </p>
+            <div className="survey-insight">
+              <span className="survey-insight-label">Indicador principal</span>
+              <strong>{activeMetric.label}</strong>
+              <p>
+                La experiencia de uso y la coordinación académica mejoran claramente cuando la disponibilidad se gestiona
+                desde un único flujo centralizado.
+              </p>
+            </div>
+          </div>
         </section>
 
         <section id="contacto" className="cta-section">
