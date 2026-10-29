@@ -5,7 +5,7 @@ import { isAdminSession, isProfessorSession } from "@/lib/auth";
 import { appendAuditEntry, buildHourSlots, overlaps, validateAcademicReservation } from "@/lib/academic-rules";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 
 type DashboardReservation = {
   id_reserva: number;
@@ -53,6 +53,7 @@ export default function DashboardPage() {
   const [timelineDate, setTimelineDate] = useState<string>("");
   const [timelineAulas, setTimelineAulas] = useState<Array<{ id_aula: number; nombre_aula: string; codigo_aula?: string; estado?: string }>>([]);
   const [timelineReservations, setTimelineReservations] = useState<DashboardReservation[]>([]);
+  const [roomAssignments, setRoomAssignments] = useState<Record<number, { docente: string; area: string; horario: string; dia: string }>>({});
   const [timelineDraft, setTimelineDraft] = useState<TimelineDraft | null>(null);
   const [timelineMessage, setTimelineMessage] = useState<string>("");
   const [savingTimeline, setSavingTimeline] = useState(false);
@@ -73,9 +74,10 @@ export default function DashboardPage() {
     try {
       setLoading(true);
 
-      const [aulasResult, reservasResult] = await Promise.all([
+      const [aulasResult, reservasResult, horariosResult] = await Promise.all([
         client.from("aulas").select("id_aula, nombre_aula, codigo_aula, estado").order("nombre_aula", { ascending: true }),
         client.from("reservas").select("*, aulas!fk_reservas_aulas(nombre_aula, codigo_aula), usuarios!fk_reservas_usuarios(nombre, apellido, email)").order("fecha_reserva", { ascending: false }),
+        client.from("horarios_docentes").select("id_aula, dia_semana, hora_inicio, hora_fin, usuarios!fk_horarios_usuarios(nombre, apellido, area)").order("dia_semana", { ascending: true }),
       ]);
 
       if (aulasResult.error) {
@@ -84,6 +86,29 @@ export default function DashboardPage() {
 
       if (reservasResult.error) {
         throw reservasResult.error;
+      }
+
+      if (horariosResult.error) {
+        throw horariosResult.error;
+      }
+
+      const assignmentMap: Record<number, { docente: string; area: string; horario: string; dia: string }> = {};
+      for (const horario of horariosResult.data ?? []) {
+        const idAula = Number(horario.id_aula);
+        const usuario = Array.isArray(horario.usuarios) ? horario.usuarios[0] : horario.usuarios;
+        const nombre = [usuario?.nombre, usuario?.apellido].filter(Boolean).join(" ").trim();
+        const horarioTexto = horario.hora_inicio && horario.hora_fin ? `${horario.hora_inicio.slice(0, 5)} - ${horario.hora_fin.slice(0, 5)}` : "Horario asignado";
+
+        if (!idAula || !nombre) {
+          continue;
+        }
+
+        assignmentMap[idAula] = {
+          docente: nombre,
+          area: usuario?.area ?? "Aula institucional",
+          horario: horarioTexto,
+          dia: horario.dia_semana ?? "Agenda",
+        };
       }
 
       const today = new Date();
@@ -109,8 +134,9 @@ export default function DashboardPage() {
       })));
       setTimelineReservations(((reservasResult.data ?? []) as Array<DashboardReservation>).map((reserva) => ({
         ...reserva,
-        estado: reserva.estado ?? "Aprobada",
+        estado: reserva.estado ?? "Pendiente",
       })));
+      setRoomAssignments(assignmentMap);
       setStats({
         aulasActivas: (aulasResult.data ?? []).filter((aula) => aula.estado === "Activo" || !aula.estado).length,
         reservasEsteMes,
@@ -198,6 +224,22 @@ export default function DashboardPage() {
     }));
   }, [timelineAulas, timelineReservations, timelineDate, timelineSlots]);
 
+  const roomCards = useMemo(() => {
+    return timelineAulas.map((aula) => {
+      const room = timelineGrid.find((item) => Number(item.id_aula) === Number(aula.id_aula));
+      const nextFreeSlot = room?.slots.find((slot) => !slot.occupied);
+      const assignment = roomAssignments[Number(aula.id_aula)];
+      const available = !!nextFreeSlot;
+
+      return {
+        ...aula,
+        assignment,
+        nextFreeSlot,
+        available,
+      };
+    });
+  }, [roomAssignments, timelineAulas, timelineGrid]);
+
   const openTimelineSlot = (aulaId: number, slot: { start: string; end: string }) => {
     setTimelineDraft({
       id_aula: aulaId,
@@ -207,6 +249,18 @@ export default function DashboardPage() {
       motivo: "Clase / práctica / reunión",
     });
     setTimelineMessage("");
+  };
+
+  const openReservationFromCard = (aulaId: number) => {
+    const room = timelineGrid.find((item) => Number(item.id_aula) === Number(aulaId));
+    const firstAvailable = room?.slots.find((slot) => !slot.occupied);
+
+    if (!firstAvailable) {
+      setTimelineMessage("Esta aula no tiene una franja libre en la fecha seleccionada.");
+      return;
+    }
+
+    openTimelineSlot(aulaId, { start: firstAvailable.start, end: firstAvailable.end });
   };
 
   const submitTimelineReservation = async () => {
@@ -230,7 +284,7 @@ export default function DashboardPage() {
       hora_inicio: timelineDraft.hora_inicio,
       hora_fin: timelineDraft.hora_fin,
       motivo: timelineDraft.motivo.trim() || "Reserva de aula",
-      estado: "Aprobada",
+      estado: "Pendiente",
     };
 
     const validation = validateAcademicReservation({
@@ -260,7 +314,7 @@ export default function DashboardPage() {
         summary: `Reserva creada para el aula ${timelineDraft.id_aula} el ${timelineDraft.fecha} de ${timelineDraft.hora_inicio} a ${timelineDraft.hora_fin}`,
         userName: localStorage.getItem("session-name") || "Profesor",
         userId,
-        state: "Aprobada",
+        state: "Pendiente",
         role: localStorage.getItem("session-role") || "Profesor",
         date: new Date().toISOString(),
       });
@@ -313,6 +367,55 @@ export default function DashboardPage() {
               </article>
             </div>
 
+            <section className="room-assignment-panel">
+              <div className="room-assignment-header">
+                <div>
+                  <p className="eyebrow">Aulas especializadas</p>
+                  <h3>Asignación institucional</h3>
+                </div>
+                <span>{timelineAulas.length} aulas activas</span>
+              </div>
+
+              <div className="room-assignment-grid">
+                {roomCards.map((aula) => (
+                  <button
+                    key={aula.id_aula}
+                    type="button"
+                    className={aula.available ? "room-card available" : "room-card occupied"}
+                    onClick={() => openReservationFromCard(aula.id_aula)}
+                  >
+                    <div className="room-card-top">
+                      <div>
+                        <span className="room-code">{aula.codigo_aula ?? "AULA"}</span>
+                        <strong>{aula.nombre_aula}</strong>
+                      </div>
+                      <span className={aula.available ? "room-status available" : "room-status occupied"}>
+                        {aula.available ? "Libre" : "Ocupada"}
+                      </span>
+                    </div>
+
+                    <div className="room-card-body">
+                      <div className="room-teacher-block">
+                        <span>Docente asignado</span>
+                        <strong>{aula.assignment?.docente ?? "Sin asignación"}</strong>
+                        <small>{aula.assignment?.area ?? "Área institucional"}</small>
+                      </div>
+
+                      <div className="room-meta-row">
+                        <span>{aula.assignment?.dia ?? "Agenda"}</span>
+                        <strong>{aula.assignment?.horario ?? (aula.nextFreeSlot ? `Libre ${aula.nextFreeSlot.start}` : "Sin horario")}</strong>
+                      </div>
+                    </div>
+
+                    <div className="room-card-footer">
+                      <small>{aula.available ? "Reservar en la franja disponible" : "Ver disponibilidad"}</small>
+                      <span>{aula.available ? "Reservar" : "Revisar"}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </section>
+
             <section className="timeline-panel">
               <div className="timeline-toolbar">
                 <div className="timeline-heading-wrap">
@@ -353,8 +456,8 @@ export default function DashboardPage() {
                   ))}
 
                   {timelineGrid.map((aula) => (
-                    <>
-                      <div key={`${aula.id_aula}-label`} className="timeline-aula-label">
+                    <Fragment key={aula.id_aula}>
+                      <div className="timeline-aula-label">
                         <strong>{aula.nombre_aula}</strong>
                         <small>{aula.codigo_aula ?? "Aula"}</small>
                       </div>
@@ -370,7 +473,7 @@ export default function DashboardPage() {
                           {slot.occupied ? "Ocupado" : "Libre"}
                         </button>
                       ))}
-                    </>
+                    </Fragment>
                   ))}
                 </div>
               </div>

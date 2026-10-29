@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { getDemoUser, isAdminSession, isProfessorSession } from "@/lib/auth";
+import { DEFAULT_AVATAR, resolveAvatarUrl } from "@/lib/profile-utils";
 import { getSupabaseStatus, supabase } from "@/lib/supabase";
 
 const getRoleName = (idRol: number | null | undefined) =>
@@ -38,6 +39,7 @@ export default function LoginPage() {
       localStorage.setItem("session-email", normalizedEmail);
       localStorage.setItem("session-user-id", String(demoUser.id_usuario));
       localStorage.setItem("session-name", nombreCompleto || "Profesor");
+      localStorage.setItem("session-avatar", resolveAvatarUrl(DEFAULT_AVATAR));
       setError("");
 
       if (demoUser.role === "Superadministrador") {
@@ -57,7 +59,7 @@ export default function LoginPage() {
     try {
       const { data, error: dbError } = await supabase
         .from("usuarios")
-        .select("id_usuario, nombre, apellido, email, password, id_rol")
+        .select("id_usuario, nombre, apellido, email, password, id_rol, avatar, cc")
         .eq("email", normalizedEmail)
         .maybeSingle();
 
@@ -76,6 +78,7 @@ export default function LoginPage() {
       localStorage.setItem("session-email", normalizedEmail);
       localStorage.setItem("session-user-id", String(data.id_usuario));
       localStorage.setItem("session-name", nombreCompleto || "Profesor");
+      localStorage.setItem("session-avatar", resolveAvatarUrl(data.avatar ?? DEFAULT_AVATAR));
       setError("");
 
       if (role === "Superadministrador") {

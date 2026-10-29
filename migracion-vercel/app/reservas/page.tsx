@@ -8,6 +8,13 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { getSupabaseStatus, supabase } from "@/lib/supabase";
 import { appendAuditEntry, overlaps, validateAcademicReservation } from "@/lib/academic-rules";
 
+const timeSlots = Array.from({ length: 13 }, (_, index) => {
+  const startHour = 7 + index;
+  const start = `${String(startHour).padStart(2, "0")}:00`;
+  const end = `${String(startHour + 1).padStart(2, "0")}:00`;
+  return { start, end, label: `${start} - ${end}` };
+});
+
 type ReservaRecord = {
   id_reserva: number;
   id_usuario: number;
@@ -40,7 +47,7 @@ const emptyForm: FormState = {
   hora_inicio: "09:00",
   hora_fin: "11:00",
   motivo: "",
-  estado: "Aprobada",
+  estado: "Pendiente",
 };
 
 const menuItems = [
@@ -62,7 +69,7 @@ const fallbackLocalData: ReservaRecord[] = [
     hora_inicio: "09:00",
     hora_fin: "11:00",
     motivo: "Clase de programación",
-    estado: "Aprobada",
+    estado: "Pendiente",
     usuarios: { nombre: "Admin", apellido: "Sistema", email: "admin@sistema.com" },
     aulas: { codigo_aula: "A-101", nombre_aula: "Aula 101" },
   },
@@ -89,6 +96,8 @@ export default function ReservasPage() {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
+  const [selectedSlot, setSelectedSlot] = useState<{ start: string; end: string } | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const role = typeof window !== "undefined" ? localStorage.getItem("session-role") : "Profesor";
   const currentUserId = typeof window !== "undefined" ? Number(localStorage.getItem("session-user-id") ?? 0) : 0;
@@ -99,7 +108,10 @@ export default function ReservasPage() {
     : (typeof window !== "undefined" ? localStorage.getItem("session-name") : null) || "Profesor";
 
   const availabilitySummary = useMemo(() => {
-    if (!form.fecha || !form.hora_inicio || !form.hora_fin) {
+    const activeStart = form.hora_inicio || selectedSlot?.start || "09:00";
+    const activeEnd = form.hora_fin || selectedSlot?.end || "10:00";
+
+    if (!form.fecha || !activeStart || !activeEnd) {
       return aulas.map((aula) => ({
         id_aula: Number(aula.id_aula),
         nombre_aula: aula.nombre_aula,
@@ -111,7 +123,7 @@ export default function ReservasPage() {
       const conflict = reservas.some((reserva) => {
         return Number(reserva.id_aula) === Number(aula.id_aula)
           && reserva.fecha_reserva === form.fecha
-          && overlaps(form.hora_inicio, form.hora_fin, reserva.hora_inicio, reserva.hora_fin);
+          && overlaps(activeStart, activeEnd, reserva.hora_inicio, reserva.hora_fin);
       });
 
       return {
@@ -120,7 +132,7 @@ export default function ReservasPage() {
         disponible: !conflict,
       };
     });
-  }, [aulas, reservas, form.fecha, form.hora_inicio, form.hora_fin]);
+  }, [aulas, reservas, form.fecha, form.hora_inicio, form.hora_fin, selectedSlot]);
 
   const professorUsuarios = useMemo(() => {
     return usuarios.filter((usuario) => {
@@ -168,7 +180,7 @@ export default function ReservasPage() {
       const nextReservas = (reservasResult.data as ReservaRecord[] | null)?.length ? (reservasResult.data as ReservaRecord[]) : [];
       const visibleReservas = currentRole === "Superadministrador"
         ? nextReservas
-        : nextReservas.filter((reserva) => Number(reserva.id_usuario) === Number(currentUserIdFromStorage) || reserva.estado === "Aprobada");
+        : nextReservas.filter((reserva) => Number(reserva.id_usuario) === Number(currentUserIdFromStorage) || reserva.estado === "Aprobada" || reserva.estado === "Pendiente");
 
       localStorage.setItem("cache-usuarios", JSON.stringify(nextUsuarios));
       localStorage.setItem("cache-aulas", JSON.stringify(nextAulas));
@@ -208,7 +220,7 @@ export default function ReservasPage() {
 
   const visibleReservas = useMemo(() => {
     if (isAdmin) return reservas;
-    return reservas.filter((reserva) => Number(reserva.id_usuario) === Number(currentUserId) || reserva.estado === "Aprobada");
+    return reservas.filter((reserva) => Number(reserva.id_usuario) === Number(currentUserId) || reserva.estado === "Aprobada" || reserva.estado === "Pendiente");
   }, [reservas, isAdmin, currentUserId]);
 
   const filteredReservas = useMemo(() => {
@@ -229,6 +241,12 @@ export default function ReservasPage() {
     });
   }, [visibleReservas, search]);
 
+  const totalPages = Math.max(1, Math.ceil(filteredReservas.length / 5));
+  const paginatedReservas = useMemo(() => {
+    const start = (currentPage - 1) * 5;
+    return filteredReservas.slice(start, start + 5);
+  }, [filteredReservas, currentPage]);
+
   const getCurrentUserLabel = () => {
     const userName = currentUserName || "Profesor";
     return userName.trim() || "Profesor";
@@ -236,6 +254,14 @@ export default function ReservasPage() {
 
   const handleChange = (field: keyof FormState, value: string) => {
     setForm((current) => ({ ...current, [field]: value }));
+    if (field === "hora_inicio" || field === "hora_fin") {
+      setSelectedSlot({ start: field === "hora_inicio" ? value : form.hora_inicio || "09:00", end: field === "hora_fin" ? value : form.hora_fin || "10:00" });
+    }
+  };
+
+  const handleSelectSlot = (slot: { start: string; end: string }) => {
+    setSelectedSlot(slot);
+    setForm((current) => ({ ...current, hora_inicio: slot.start, hora_fin: slot.end }));
   };
 
   const persistReservationLocally = (payload: Record<string, any>, isEditing: boolean) => {
@@ -257,7 +283,7 @@ export default function ReservasPage() {
     const connectionStatus = getSupabaseStatus();
     const resolvedUserId = isAdmin ? Number(form.id_usuario) : Number(currentUserId || form.id_usuario || 0);
 
-    const finalEstado = "Aprobada";
+    const finalEstado = "Pendiente";
 
     const payload = {
       id_usuario: resolvedUserId,
@@ -315,7 +341,7 @@ export default function ReservasPage() {
         window.dispatchEvent(new Event("reservas-updated"));
       }
 
-      setMessage(form.id_reserva ? "Reserva actualizada correctamente." : "Reserva registrada correctamente.");
+      setMessage(form.id_reserva ? "Reserva actualizada correctamente y queda en revisión." : "Reserva registrada correctamente y queda pendiente de aprobación.");
       setForm(emptyForm);
     } catch (error) {
       const errorMessage =
@@ -347,6 +373,7 @@ export default function ReservasPage() {
   };
 
   const handleEdit = (reserva: ReservaRecord) => {
+    setSelectedSlot({ start: reserva.hora_inicio, end: reserva.hora_fin });
     setForm({
       id_reserva: reserva.id_reserva,
       id_usuario: String(reserva.id_usuario ?? ""),
@@ -359,6 +386,12 @@ export default function ReservasPage() {
     });
     setMessage("Editando reserva actual.");
   };
+
+  useEffect(() => {
+    if (!selectedSlot && form.hora_inicio && form.hora_fin) {
+      setSelectedSlot({ start: form.hora_inicio, end: form.hora_fin });
+    }
+  }, [form.hora_inicio, form.hora_fin, selectedSlot]);
 
   return (
     <main className="page-shell">
@@ -387,13 +420,26 @@ export default function ReservasPage() {
           </div>
         </div>
 
-        <div className="booking-grid">
-          <form className="form-card" onSubmit={handleSubmit}>
-            <h3>{form.id_reserva ? "Editar reserva" : "Registrar reserva"}</h3>
+        <div className="booking-grid modern-booking-grid">
+          <form className="form-card modern-form-card" onSubmit={handleSubmit}>
+            <div className="modern-form-header">
+              <div>
+                <p className="eyebrow">Nueva reserva</p>
+                <h3>{form.id_reserva ? "Editar reserva" : "Registrar nueva reserva"}</h3>
+              </div>
+            </div>
 
-            <div className="form-grid">
+            <div className="user-readonly-card">
+              <div className="user-readonly-icon">👤</div>
+              <div>
+                <span>Docente responsable</span>
+                <strong>{isAdmin ? (visibleUsuarios.find((usuario) => String(usuario.id_usuario) === form.id_usuario) ? `${visibleUsuarios.find((usuario) => String(usuario.id_usuario) === form.id_usuario)?.nombre ?? ""} ${visibleUsuarios.find((usuario) => String(usuario.id_usuario) === form.id_usuario)?.apellido ?? ""}`.trim() : "Selecciona un docente") : currentUserName}</strong>
+              </div>
+            </div>
+
+            <div className="form-grid modern-form-grid">
               {isAdmin ? (
-                <label>
+                <label className="full-width">
                   Usuario
                   <select value={form.id_usuario} onChange={(event) => handleChange("id_usuario", event.target.value)}>
                     <option value="">Selecciona usuario</option>
@@ -404,20 +450,15 @@ export default function ReservasPage() {
                     ))}
                   </select>
                 </label>
-              ) : (
-                <label>
-                  Usuario
-                  <input value={currentUserName} readOnly />
-                </label>
-              )}
+              ) : null}
 
-              <label>
-                Aula
+              <label className="full-width">
+                Aula especializada
                 <select value={form.id_aula} onChange={(event) => handleChange("id_aula", event.target.value)}>
                   <option value="">Selecciona aula</option>
                   {aulas.map((aula) => (
                     <option key={aula.id_aula} value={aula.id_aula}>
-                      {aula.nombre_aula} ({aula.codigo_aula})
+                      {aula.nombre_aula} · {aula.codigo_aula}
                     </option>
                   ))}
                 </select>
@@ -428,27 +469,33 @@ export default function ReservasPage() {
                 <input type="date" value={form.fecha} onChange={(event) => handleChange("fecha", event.target.value)} />
               </label>
 
-              <label>
-                Hora inicio
-                <input type="time" value={form.hora_inicio} onChange={(event) => handleChange("hora_inicio", event.target.value)} />
-              </label>
+              <div className="slot-summary">
+                <span>Bloque horario</span>
+                <strong>{selectedSlot ? `${selectedSlot.start} - ${selectedSlot.end}` : "Selecciona un bloque"}</strong>
+              </div>
 
-              <label>
-                Hora fin
-                <input type="time" value={form.hora_fin} onChange={(event) => handleChange("hora_fin", event.target.value)} />
-              </label>
-
-              <label>
-                Estado
-                <input value={form.estado || "Aprobada"} readOnly />
-              </label>
+              <div className="time-slot-grid full-width">
+                {timeSlots.map((slot) => {
+                  const isSelected = selectedSlot?.start === slot.start && selectedSlot?.end === slot.end;
+                  return (
+                    <button
+                      key={slot.label}
+                      type="button"
+                      className={isSelected ? "time-slot active" : "time-slot"}
+                      onClick={() => handleSelectSlot(slot)}
+                    >
+                      {slot.label}
+                    </button>
+                  );
+                })}
+              </div>
 
               <label className="full-width">
-                Motivo
+                Motivo / actividad
                 <textarea
                   value={form.motivo}
                   onChange={(event) => handleChange("motivo", event.target.value)}
-                  placeholder="Ej: Clase de laboratorio, reunión académica, etc."
+                  placeholder="Ej: Clase de laboratorio, reunión académica, tutoría, práctica, etc."
                 />
               </label>
             </div>
@@ -471,42 +518,49 @@ export default function ReservasPage() {
             {message ? <p className="form-feedback">{message}</p> : null}
 
             <div className="form-actions">
-              <button className="primary-button" type="submit" disabled={saving}>
-                {saving ? "Guardando..." : form.id_reserva ? "Guardar cambios" : "Registrar reserva"}
+              <button className="secondary-button" type="button" onClick={() => setForm(emptyForm)}>
+                Cancelar
               </button>
-              {form.id_reserva ? (
-                <button className="secondary-button" type="button" onClick={() => setForm(emptyForm)}>
-                  Cancelar
-                </button>
-              ) : null}
+              <button className="primary-button" type="submit" disabled={saving}>
+                {saving ? "Guardando..." : form.id_reserva ? "Guardar cambios" : "Solicitar reserva"}
+              </button>
             </div>
           </form>
 
-          <div className="table-card">
+          <div className="table-card modern-history-card">
             <div className="table-header">
-              <h3>Listado</h3>
-              <span>{filteredReservas.length} registros</span>
+              <div>
+                <h3>Historial de reservas</h3>
+                <span>{filteredReservas.length} registros</span>
+              </div>
+              <div className="history-pagination">
+                <button type="button" onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} disabled={currentPage === 1}>
+                  ‹
+                </button>
+                <span>{currentPage} / {totalPages}</span>
+                <button type="button" onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))} disabled={currentPage >= totalPages}>
+                  ›
+                </button>
+              </div>
             </div>
 
             <div className="table-wrap">
               <table>
                 <thead>
                   <tr>
-                    <th>Aula</th>
                     <th>Docente</th>
+                    <th>Aula</th>
                     <th>Horario</th>
                     <th>Estado</th>
-                    <th>Acciones</th>
+                    <th>Acción</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredReservas.length ? (
-                    filteredReservas.map((reserva) => (
+                  {paginatedReservas.length ? (
+                    paginatedReservas.map((reserva) => (
                       <tr key={reserva.id_reserva}>
+                        <td>{reserva.usuarios?.nombre ?? ""} {reserva.usuarios?.apellido ?? ""}</td>
                         <td>{reserva.aulas?.nombre_aula ?? "Sin aula"}</td>
-                        <td>
-                          {reserva.usuarios?.nombre ?? ""} {reserva.usuarios?.apellido ?? ""}
-                        </td>
                         <td>
                           {reserva.fecha_reserva} · {reserva.hora_inicio} - {reserva.hora_fin}
                         </td>
