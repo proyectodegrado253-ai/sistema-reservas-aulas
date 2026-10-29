@@ -99,6 +99,7 @@ export default function ReservasPage() {
   const [selectedSlot, setSelectedSlot] = useState<{ start: string; end: string } | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   const role = typeof window !== "undefined" ? localStorage.getItem("session-role") : "Profesor";
   const currentUserId = typeof window !== "undefined" ? Number(localStorage.getItem("session-user-id") ?? 0) : 0;
@@ -326,6 +327,28 @@ export default function ReservasPage() {
     setForm((current) => ({ ...current, hora_inicio: slot.start, hora_fin: slot.end }));
   };
 
+  const openCreateModal = () => {
+    setShowCreateModal(true);
+    setMessage("");
+    setSelectedSlot({ start: "09:00", end: "10:00" });
+    setForm((current) => ({
+      ...emptyForm,
+      id_usuario: isAdmin ? current.id_usuario || "" : String(currentUserId || ""),
+      fecha: current.fecha || "",
+      hora_inicio: "09:00",
+      hora_fin: "10:00",
+      motivo: "",
+      estado: "Pendiente",
+    }));
+  };
+
+  const closeCreateModal = () => {
+    setShowCreateModal(false);
+    setMessage("");
+    setSelectedSlot(null);
+    setForm(emptyForm);
+  };
+
   const persistReservationLocally = (payload: Record<string, any>, isEditing: boolean) => {
     const selectedUser = usuarios.find((usuario) => Number(usuario.id_usuario) === Number(payload.id_usuario)) ?? currentUser ?? null;
     const userLabel = selectedUser ? `${selectedUser.nombre ?? ""} ${selectedUser.apellido ?? ""}`.trim() : getCurrentUserLabel();
@@ -405,6 +428,7 @@ export default function ReservasPage() {
 
       setMessage(form.id_reserva ? "Reserva actualizada correctamente y queda en revisión." : "Reserva registrada correctamente y queda pendiente de aprobación.");
       setForm(emptyForm);
+      setShowCreateModal(false);
     } catch (error) {
       const errorMessage =
         error instanceof Error
@@ -447,6 +471,7 @@ export default function ReservasPage() {
       estado: reserva.estado,
     });
     setMessage("Editando reserva actual.");
+    setShowCreateModal(true);
   };
 
   useEffect(() => {
@@ -459,68 +484,106 @@ export default function ReservasPage() {
     <main className="page-shell">
       <RoleSidebar />
 
-      <section className="content-panel">
-        <header className="topbar">
-          <div>
-            <p className="eyebrow">Gestión</p>
-            <h1>{isAdmin ? "Reservas" : "Mis reservas"}</h1>
+      <section className="content-panel compact-panel">
+        <div className="history-toolbar">
+          <div className="history-title-group">
+            <h1 className="history-title">Historial de Reservas</h1>
+            <button type="button" className="primary-button" onClick={openCreateModal}>
+              Nueva solicitud
+            </button>
           </div>
-          <button className="primary-button" type="button" onClick={() => setForm(emptyForm)}>
-            Nueva solicitud
-          </button>
-        </header>
 
-        <div className="reservas-controls">
-          <div className="search-box">
-            <span>Buscar</span>
+          <div className="history-search">
             <input
               type="text"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Buscar aula, docente o motivo"
+              placeholder="Buscar por aula, fecha o motivo..."
             />
           </div>
         </div>
 
-        <div className="booking-grid modern-booking-grid">
-          <form className="form-card modern-form-card" onSubmit={handleSubmit}>
-            <div className="modern-form-header">
+        <div className="history-table-surface">
+          <div className="history-table-header">
+            <div className="history-table-meta">
+              <span>{filteredReservas.length} reservas</span>
+            </div>
+            <div className="history-pagination">
+              <button type="button" onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} disabled={currentPage === 1}>
+                ‹
+              </button>
+              <span>{currentPage} / {totalPages}</span>
+              <button type="button" onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))} disabled={currentPage >= totalPages}>
+                ›
+              </button>
+            </div>
+          </div>
+
+          <div className="table-wrap">
+            <table className="history-table">
+              <thead>
+                <tr>
+                  <th>Aula</th>
+                  <th>Motivo</th>
+                  <th>Fecha</th>
+                  <th>Horario</th>
+                  <th>Estado</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedReservas.length ? (
+                  paginatedReservas.map((reserva) => {
+                    const liveState = currentTime
+                      ? getReservationState(reserva, currentTime)
+                      : { label: reserva.estado.toUpperCase(), tone: reserva.estado.toLowerCase(), isActive: false };
+
+                    return (
+                      <tr key={reserva.id_reserva} className={liveState.isActive ? "row-live" : ""}>
+                        <td>{reserva.aulas?.nombre_aula ?? "Sin aula"}</td>
+                        <td>{reserva.motivo ?? "Sin motivo"}</td>
+                        <td>{reserva.fecha_reserva}</td>
+                        <td>{`${reserva.hora_inicio} - ${reserva.hora_fin}`}</td>
+                        <td>
+                          <span className={`status ${liveState.tone}`}>
+                            {liveState.label}
+                          </span>
+                        </td>
+                        <td>
+                          <button type="button" className="history-detail-button" onClick={() => handleEdit(reserva)}>
+                            Detalles
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={6} className="empty-state">
+                      No se encontraron resultados para esta búsqueda.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      {showCreateModal ? (
+        <div className="history-modal-backdrop" onClick={closeCreateModal}>
+          <div className="history-modal-card" onClick={(event) => event.stopPropagation()}>
+            <div className="history-modal-header">
               <div>
-                <p className="eyebrow">Nueva reserva</p>
-                <h3>{form.id_reserva ? "Editar reserva" : "Registrar nueva reserva"}</h3>
+                <p className="eyebrow">Nueva solicitud</p>
+                <h3>{form.id_reserva ? "Editar reserva" : "Solicitud de aula"}</h3>
               </div>
+              <button type="button" className="history-close-button" onClick={closeCreateModal}>×</button>
             </div>
 
-            <div className="stat-compact-panel">
-              <div className="stat-compact-item">
-                <span>Total Reservas Mes</span>
-                <strong>{monthKey ? teacherReservations.filter((reserva) => reserva.fecha_reserva.startsWith(monthKey)).length : 0}</strong>
-              </div>
-              <div className="stat-compact-item success">
-                <span>Reservas Aprobadas</span>
-                <strong>{teacherReservations.filter((reserva) => reserva.estado === "Aprobada").length}</strong>
-              </div>
-              <div className="stat-compact-item warning">
-                <span>Reservas Pendientes</span>
-                <strong>{teacherReservations.filter((reserva) => reserva.estado === "Pendiente").length}</strong>
-              </div>
-              <div className="stat-compact-item info">
-                <span>Próxima Aula</span>
-                <strong>{nextTeacherReservation?.aulas?.nombre_aula ?? "Sin reserva"}</strong>
-              </div>
-            </div>
-
-            <div className="user-readonly-card">
-              <div className="user-readonly-icon">👤</div>
-              <div>
-                <span>Docente responsable</span>
-                <strong>{isAdmin ? (visibleUsuarios.find((usuario) => String(usuario.id_usuario) === form.id_usuario) ? `${visibleUsuarios.find((usuario) => String(usuario.id_usuario) === form.id_usuario)?.nombre ?? ""} ${visibleUsuarios.find((usuario) => String(usuario.id_usuario) === form.id_usuario)?.apellido ?? ""}`.trim() : "Selecciona un docente") : currentUserName}</strong>
-              </div>
-            </div>
-
-            <div className="form-grid modern-form-grid">
+            <form onSubmit={handleSubmit} className="history-modal-form">
               {isAdmin ? (
-                <label className="full-width">
+                <label>
                   Usuario
                   <select value={form.id_usuario} onChange={(event) => handleChange("id_usuario", event.target.value)}>
                     <option value="">Selecciona usuario</option>
@@ -533,7 +596,7 @@ export default function ReservasPage() {
                 </label>
               ) : null}
 
-              <label className="full-width">
+              <label>
                 Aula especializada
                 <select value={form.id_aula} onChange={(event) => handleChange("id_aula", event.target.value)}>
                   <option value="">Selecciona aula</option>
@@ -550,12 +613,12 @@ export default function ReservasPage() {
                 <input type="date" value={form.fecha} onChange={(event) => handleChange("fecha", event.target.value)} />
               </label>
 
-              <div className="slot-summary">
+              <div className="history-modal-timeblock">
                 <span>Bloque horario</span>
                 <strong>{selectedSlot ? `${selectedSlot.start} - ${selectedSlot.end}` : "Selecciona un bloque"}</strong>
               </div>
 
-              <div className="time-slot-grid full-width">
+              <div className="time-slot-grid">
                 {timeSlots.map((slot) => {
                   const isSelected = selectedSlot?.start === slot.start && selectedSlot?.end === slot.end;
                   return (
@@ -571,143 +634,29 @@ export default function ReservasPage() {
                 })}
               </div>
 
-              <label className="full-width">
+              <label>
                 Motivo / actividad
                 <textarea
                   value={form.motivo}
                   onChange={(event) => handleChange("motivo", event.target.value)}
-                  placeholder="Ej: Clase de laboratorio, reunión académica, tutoría, práctica, etc."
+                  placeholder="Ej. Clase, laboratorio, reunión..."
                 />
               </label>
-            </div>
 
-            <div className="availability-panel">
-              <div className="availability-header">
-                <h4>Disponibilidad</h4>
-                <span>{form.fecha ? "Horario activo" : "Selecciona fecha"}</span>
-              </div>
-              <div className="availability-list">
-                {availabilitySummary.map((item) => (
-                  <div key={item.id_aula} className={`availability-item ${item.disponible ? "available" : "busy"}`}>
-                    <span>{item.nombre_aula}</span>
-                    <strong>{item.disponible ? "Disponible" : "Ocupada"}</strong>
-                  </div>
-                ))}
-              </div>
-            </div>
+              {message ? <p className="form-feedback">{message}</p> : null}
 
-            {message ? <p className="form-feedback">{message}</p> : null}
-
-            <div className="form-actions">
-              <button className="secondary-button" type="button" onClick={() => setForm(emptyForm)}>
-                Cancelar
-              </button>
-              <button className="primary-button" type="submit" disabled={saving}>
-                {saving ? "Guardando..." : form.id_reserva ? "Guardar cambios" : "Solicitar reserva"}
-              </button>
-            </div>
-          </form>
-
-          <div className="table-card modern-history-card">
-            <div className="table-header">
-              <div>
-                <h3>Historial de reservas</h3>
-                <span>{filteredReservas.length} registros</span>
-              </div>
-              <div className="history-pagination">
-                <button type="button" onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} disabled={currentPage === 1}>
-                  ‹
+              <div className="history-modal-actions">
+                <button type="button" className="secondary-button" onClick={closeCreateModal}>
+                  Cancelar
                 </button>
-                <span>{currentPage} / {totalPages}</span>
-                <button type="button" onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))} disabled={currentPage >= totalPages}>
-                  ›
+                <button type="submit" className="primary-button" disabled={saving}>
+                  {saving ? "Guardando..." : form.id_reserva ? "Guardar" : "Solicitar"}
                 </button>
               </div>
-            </div>
-
-            {(() => {
-              const todayDate = todayKey;
-              const nextTodayReservation = todayDate
-                ? [...visibleReservas]
-                    .filter((reserva) => reserva.fecha_reserva === todayDate)
-                    .sort((a, b) => `${a.fecha_reserva}T${a.hora_inicio}`.localeCompare(`${b.fecha_reserva}T${b.hora_inicio}`))[0]
-                : null;
-
-              if (!nextTodayReservation) {
-                return null;
-              }
-
-              return (
-                <div className="upcoming-reminder-card">
-                  <div className="reminder-pill">RECORDATORIO</div>
-                  <div className="reminder-body">
-                    <div>
-                      <p>Tu próxima reserva es HOY</p>
-                      <strong>{nextTodayReservation.aulas?.nombre_aula ?? "Aula no disponible"}</strong>
-                    </div>
-                    <span>{nextTodayReservation.fecha_reserva} · {nextTodayReservation.hora_inicio} - {nextTodayReservation.hora_fin}</span>
-                  </div>
-                  <button type="button" className="secondary-button compact" onClick={() => setSearch(nextTodayReservation.aulas?.nombre_aula ?? "")}>
-                    Ver detalle
-                  </button>
-                </div>
-              );
-            })()}
-
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Docente</th>
-                    <th>Aula</th>
-                    <th>Horario</th>
-                    <th>Estado</th>
-                    <th>Acción</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {paginatedReservas.length ? (
-                    paginatedReservas.map((reserva) => {
-                      const liveState = currentTime
-                        ? getReservationState(reserva, currentTime)
-                        : { label: reserva.estado, tone: reserva.estado.toLowerCase(), isActive: false };
-                      const teacherName = `${reserva.usuarios?.nombre ?? ""} ${reserva.usuarios?.apellido ?? ""}`.trim() || "Docente";
-
-                      return (
-                        <tr key={reserva.id_reserva} className={liveState.isActive ? "row-live" : ""}>
-                          <td>{isAdmin ? teacherName : currentUserName}</td>
-                          <td>{reserva.aulas?.nombre_aula ?? "Sin aula"}</td>
-                          <td>
-                            {reserva.fecha_reserva} · {reserva.hora_inicio} - {reserva.hora_fin}
-                          </td>
-                          <td>
-                            <span className={`status ${liveState.tone}`}>
-                              {liveState.label}
-                            </span>
-                          </td>
-                          <td>
-                            <ActionMenu
-                              items={[
-                                { label: "Editar", onClick: () => handleEdit(reserva) },
-                              ]}
-                            />
-                          </td>
-                        </tr>
-                      );
-                    })
-                  ) : (
-                    <tr>
-                      <td colSpan={5} className="empty-state">
-                        No se encontraron resultados para esta búsqueda.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+            </form>
           </div>
         </div>
-      </section>
+      ) : null}
     </main>
   );
 }

@@ -85,6 +85,7 @@ export default function DashboardPage() {
   const [timelineReservations, setTimelineReservations] = useState<DashboardReservation[]>([]);
   const [roomAssignments, setRoomAssignments] = useState<Record<number, { docente: string; area: string; horario: string; dia: string }>>({});
   const [timelineDraft, setTimelineDraft] = useState<TimelineDraft | null>(null);
+  const [selectedAgendaRoom, setSelectedAgendaRoom] = useState<{ id_aula: number; nombre_aula: string; codigo_aula?: string; slots: Array<{ start: string; end: string; occupied: boolean }> } | null>(null);
   const [timelineMessage, setTimelineMessage] = useState<string>("");
   const [savingTimeline, setSavingTimeline] = useState(false);
 
@@ -476,7 +477,19 @@ export default function DashboardPage() {
                   const freeCount = aula.slots.filter((slot) => !slot.occupied).length;
 
                   return (
-                    <div key={aula.id_aula} className="agenda-room-card">
+                    <div
+                      key={aula.id_aula}
+                      className="agenda-room-card"
+                      onClick={() => setSelectedAgendaRoom({ id_aula: aula.id_aula, nombre_aula: aula.nombre_aula, codigo_aula: aula.codigo_aula, slots: aula.slots.map((slot) => ({ start: slot.start, end: slot.end, occupied: slot.occupied })) })}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelectedAgendaRoom({ id_aula: aula.id_aula, nombre_aula: aula.nombre_aula, codigo_aula: aula.codigo_aula, slots: aula.slots.map((slot) => ({ start: slot.start, end: slot.end, occupied: slot.occupied })) });
+                        }
+                      }}
+                    >
                       <div className="agenda-room-head">
                         <div>
                           <span className="agenda-room-code">{aula.codigo_aula ?? "AULA"}</span>
@@ -508,6 +521,50 @@ export default function DashboardPage() {
           </>
         )}
       </section>
+
+      {selectedAgendaRoom ? (
+        <div className="timeline-modal-backdrop" onClick={() => setSelectedAgendaRoom(null)}>
+          <div className="timeline-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="timeline-modal-header">
+              <div>
+                <p>Detalle de aula</p>
+                <h3>{selectedAgendaRoom.nombre_aula}</h3>
+              </div>
+              <button type="button" className="timeline-close" onClick={() => setSelectedAgendaRoom(null)}>×</button>
+            </div>
+
+            <div className="timeline-summary-grid">
+              <div>
+                <span>Código</span>
+                <strong>{selectedAgendaRoom.codigo_aula ?? "AULA"}</strong>
+              </div>
+              <div>
+                <span>Disponibles</span>
+                <strong>{selectedAgendaRoom.slots.filter((slot) => !slot.occupied).length}</strong>
+              </div>
+            </div>
+
+            <div className="compact-room-detail-grid">
+              {selectedAgendaRoom.slots.map((slot) => (
+                <button
+                  key={`${selectedAgendaRoom.id_aula}-${slot.start}`}
+                  type="button"
+                  className={slot.occupied ? "compact-room-detail-item occupied" : "compact-room-detail-item free"}
+                  onClick={() => {
+                    if (!slot.occupied) {
+                      setSelectedAgendaRoom(null);
+                      openTimelineSlot(selectedAgendaRoom.id_aula, { start: slot.start, end: slot.end });
+                    }
+                  }}
+                >
+                  <span>{slot.start}</span>
+                  <strong>{slot.occupied ? "Ocupado" : "Libre"}</strong>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {timelineDraft ? (
         <div className="timeline-modal-backdrop" onClick={() => setTimelineDraft(null)}>
