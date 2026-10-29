@@ -473,16 +473,18 @@ export default function DashboardPage() {
               </div>
 
               <div className="timeline-shell" aria-label="Línea de tiempo de aulas">
-                <div className="timeline-grid">
-                  <div className="timeline-grid-corner" />
-                  {timelineSlots.map((slot) => (
-                    <div key={slot.start} className="timeline-hour-label">
-                      {slot.start}
-                    </div>
-                  ))}
+                <div className="timeline-axis" aria-hidden="true">
+                  <div className="timeline-axis-label">Aula</div>
+                  <div className="timeline-axis-track">
+                    {timelineSlots.map((slot) => (
+                      <span key={slot.start}>{slot.start}</span>
+                    ))}
+                  </div>
+                </div>
 
+                <div className="timeline-grid">
                   {timelineGrid.map((aula) => (
-                    <Fragment key={aula.id_aula}>
+                    <div key={aula.id_aula} className="timeline-row">
                       <button
                         type="button"
                         className="timeline-room-meta"
@@ -501,11 +503,11 @@ export default function DashboardPage() {
                             title={slot.occupied ? `${aula.nombre_aula} ocupada ${slot.start} - ${slot.end}` : `Reservar ${aula.nombre_aula} ${slot.start} - ${slot.end}`}
                             onClick={() => !slot.occupied && openTimelineSlot(aula.id_aula, { start: slot.start, end: slot.end })}
                           >
-                            <span>{slot.occupied ? "Reservado" : slot.start}</span>
+                            <span>{slot.occupied ? slot.start : ""}</span>
                           </button>
                         ))}
                       </div>
-                    </Fragment>
+                    </div>
                   ))}
                 </div>
               </div>

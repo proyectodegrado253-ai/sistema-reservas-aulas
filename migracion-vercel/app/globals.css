@@ -2641,26 +2641,33 @@ body {
 }
 
 .timeline-shell {
+  display: grid;
+  gap: 0.7rem;
   overflow-x: auto;
-  padding-bottom: 0.2rem;
+  padding-bottom: 0.3rem;
 }
 
-.timeline-grid {
+.timeline-axis {
   display: grid;
-  grid-template-columns: minmax(120px, 180px) repeat(11, minmax(44px, 1fr));
-  gap: 0.38rem;
+  grid-template-columns: 180px minmax(500px, 1fr);
+  gap: 0.6rem;
+  align-items: center;
   min-width: 760px;
 }
 
-.timeline-grid-corner {
-  min-height: 42px;
+.timeline-axis-label {
+  color: var(--muted);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding-left: 0.4rem;
 }
 
-.timeline-hour-label {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 30px;
+.timeline-axis-track {
+  display: grid;
+  grid-template-columns: repeat(11, minmax(44px, 1fr));
+  gap: 0.34rem;
   color: var(--muted);
   font-size: 0.62rem;
   font-weight: 800;
@@ -2668,12 +2675,32 @@ body {
   text-transform: uppercase;
 }
 
+.timeline-axis-track span {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 24px;
+}
+
+.timeline-grid {
+  display: grid;
+  gap: 0.72rem;
+  min-width: 760px;
+}
+
+.timeline-row {
+  display: grid;
+  grid-template-columns: 180px minmax(500px, 1fr);
+  gap: 0.6rem;
+  align-items: stretch;
+}
+
 .timeline-room-meta {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 0.2rem;
-  min-height: 68px;
+  gap: 0.18rem;
+  min-height: 72px;
   padding: 0.55rem 0.7rem;
   border: 1px solid rgba(148, 163, 184, 0.18);
   border-radius: 12px;
@@ -2710,66 +2737,11 @@ body {
   display: grid;
   grid-template-columns: repeat(11, minmax(44px, 1fr));
   gap: 0.34rem;
-  min-height: 68px;
-  padding: 0.22rem 0.1rem;
+  min-height: 72px;
+  padding: 0.22rem 0.12rem;
   border: 1px solid rgba(148, 163, 184, 0.14);
   border-radius: 12px;
-  background: rgba(241, 245, 249, 0.84);
-}
-
-@media (max-width: 900px) {
-  .timeline-grid {
-    min-width: 680px;
-  }
-
-  .timeline-room-meta {
-    min-height: 60px;
-    padding: 0.45rem 0.55rem;
-  }
-
-  .timeline-room-meta strong {
-    font-size: 0.8rem;
-  }
-}
-
-@media (max-width: 640px) {
-  .dashboard-agenda-card {
-    padding: 0.7rem 0.7rem 0.8rem;
-  }
-
-  .timeline-shell {
-    overflow-x: auto;
-  }
-
-  .timeline-grid {
-    grid-template-columns: 1fr;
-    min-width: 0;
-  }
-
-  .timeline-grid-corner {
-    display: none;
-  }
-
-  .timeline-hour-label {
-    display: none;
-  }
-
-  .timeline-room-meta {
-    min-height: auto;
-    width: 100%;
-    padding: 0.7rem 0.75rem;
-    border-radius: 10px;
-  }
-
-  .timeline-room-track {
-    grid-template-columns: repeat(11, minmax(36px, 1fr));
-    min-height: 54px;
-    padding: 0.2rem;
-  }
-
-  .timeline-band {
-    min-height: 46px;
-  }
+  background: rgba(241, 245, 249, 0.78);
 }
 
 .timeline-band {
@@ -2779,21 +2751,21 @@ body {
   min-height: 54px;
   border: 1px solid transparent;
   border-radius: 10px;
-  padding: 0.18rem 0.12rem;
+  padding: 0.15rem 0.12rem;
   font-weight: 700;
   cursor: pointer;
   transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
 }
 
 .timeline-band span {
-  font-size: 0.58rem;
+  font-size: 0.52rem;
   letter-spacing: 0.04em;
 }
 
 .timeline-band.free {
   background: rgba(15, 23, 42, 0.02);
-  border-color: rgba(148, 163, 184, 0.2);
-  color: var(--muted);
+  border-color: rgba(148, 163, 184, 0.18);
+  color: transparent;
 }
 
 .timeline-band.free:hover {
@@ -2810,7 +2782,48 @@ body {
 }
 
 .timeline-band.occupied span {
-  font-size: 0.54rem;
+  font-size: 0.5rem;
+}
+
+@media (max-width: 900px) {
+  .timeline-axis,
+  .timeline-row {
+    grid-template-columns: 150px minmax(500px, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .dashboard-agenda-card {
+    padding: 0.7rem 0.7rem 0.8rem;
+  }
+
+  .timeline-shell {
+    overflow-x: auto;
+  }
+
+  .timeline-axis,
+  .timeline-row {
+    grid-template-columns: 140px minmax(420px, 1fr);
+    min-width: 560px;
+  }
+
+  .timeline-room-meta {
+    min-height: 62px;
+    padding: 0.55rem 0.6rem;
+  }
+
+  .timeline-room-meta strong {
+    font-size: 0.8rem;
+  }
+
+  .timeline-room-track {
+    min-height: 62px;
+    padding: 0.18rem 0.1rem;
+  }
+
+  .timeline-band {
+    min-height: 42px;
+  }
 }
 
 .dashboard-inline-message {
