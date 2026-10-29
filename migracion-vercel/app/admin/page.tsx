@@ -26,39 +26,71 @@ type ActivityRow = {
   detalle: string;
 };
 
-const roomCatalog = [
-  "Aula Especializada Matemáticas",
-  "Aula Especializada Informática",
-  "Aula Especializada Innovación",
-  "Punto Vive Digital",
-  "Laboratorio de Biología",
-  "Laboratorio de Química",
-  "Laboratorio de Física",
-  "Salón de Humanidades",
-  "Biblioteca",
-  "Sala de Salud",
-  "Sala de Diseño",
-  "Sala de Arte",
-];
-
 const dayLabels = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"];
 
-const fallbackRoomStatus = [
-  ["Disponible", "Disponible", "Reservado", "Disponible", "Disponible"],
-  ["Ocupado", "Disponible", "Disponible", "Reservado", "Disponible"],
-  ["Disponible", "Reservado", "Disponible", "Disponible", "Ocupado"],
-  ["Disponible", "Disponible", "Disponible", "Reservado", "Disponible"],
-  ["Reservado", "Disponible", "Disponible", "Disponible", "Disponible"],
-  ["Disponible", "Ocupado", "Disponible", "Reservado", "Disponible"],
-  ["Disponible", "Disponible", "Reservado", "Disponible", "Disponible"],
-  ["Reservado", "Disponible", "Disponible", "Disponible", "Ocupado"],
-  ["Disponible", "Disponible", "Disponible", "Reservado", "Disponible"],
-  ["Disponible", "Reservado", "Disponible", "Disponible", "Disponible"],
-  ["Disponible", "Disponible", "Ocupado", "Disponible", "Reservado"],
-  ["Reservado", "Disponible", "Disponible", "Ocupado", "Disponible"],
-];
-
 const toTitle = (value?: string | null) => (value ?? "").trim();
+
+const normalizeReservationState = (value?: string | null) => {
+  const normalized = String(value ?? "").trim().toLowerCase();
+
+  if (normalized === "aprobada") return "Aprobada";
+  if (normalized === "rechazada") return "Rechazada";
+  if (normalized === "pendiente") return "Pendiente";
+  if (normalized === "cancelada") return "Cancelada";
+
+  return value ? String(value).trim() : "Pendiente";
+};
+
+const getCurrentWeekDates = () => {
+  const today = new Date();
+
+  return Array.from({ length: 5 }, (_, index) => {
+    const date = new Date(today);
+    const currentDay = date.getDay();
+    const diffToMonday = (currentDay === 0 ? -6 : 1 - currentDay) + index;
+    date.setDate(date.getDate() + diffToMonday);
+    return {
+      key: date.toISOString().slice(0, 10),
+      label: dayLabels[index],
+    };
+  });
+};
+
+const buildRoomMatrix = (
+  aulas: Array<Record<string, any>> = [],
+  reservas: ReservationRecord[] = [],
+  weekDates: Array<{ key: string; label: string }> = [],
+) => {
+  const activeWeekDates = weekDates.length ? weekDates : dayLabels.map((label, index) => ({
+    key: "",
+    label,
+  }));
+
+  if (!aulas.length) {
+    return [];
+  }
+
+  return aulas.map((aula) => {
+    const roomName = aula.nombre_aula ?? "Aula sin nombre";
+    const status = activeWeekDates.map(({ key }) => {
+      if (!key) {
+        return "Disponible";
+      }
+
+      const hasReservation = reservas.some((reserva) => {
+        if (Number(reserva.id_aula) !== Number(aula.id_aula)) {
+          return false;
+        }
+
+        return reserva.fecha_reserva === key;
+      });
+
+      return hasReservation ? "Reservado" : "Disponible";
+    });
+
+    return { room: roomName, status };
+  });
+};
 
 function PanelSkeleton() {
   return (
@@ -88,51 +120,23 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [aulas, setAulas] = useState<Array<Record<string, any>>>([]);
+  const [reservas, setReservas] = useState<ReservationRecord[]>([]);
+  const [weekDates, setWeekDates] = useState<Array<{ key: string; label: string }>>([]);
 
-  const roomMatrix = useMemo(() => {
-    return roomCatalog.map((room, idx) => ({
-      room,
-      status: fallbackRoomStatus[idx] ?? Array(5).fill("Disponible"),
-    }));
-  }, []);
+  const roomMatrix = useMemo(() => buildRoomMatrix(aulas, reservas, weekDates), [aulas, reservas, weekDates]);
 
   const loadStats = async () => {
     const client = supabase;
 
     if (!client) {
-      setStats({ docentesActivos: 30, aulasHabilitadas: 12, totalReservas: 35, pendientes: 2 });
-      setQueue([
-        {
-          id_reserva: 1,
-          id_aula: 1,
-          id_usuario: 101,
-          fecha_reserva: "2026-10-30",
-          hora_inicio: "08:00",
-          hora_fin: "10:00",
-          motivo: "Clase de apoyo en matemáticas",
-          estado: "Pendiente",
-          usuarios: { nombre: "Charris", apellido: "Sarmiento", email: "charris@institucion.edu" },
-          aulas: { nombre_aula: "Aula Especializada Matemáticas", codigo_aula: "A-101" },
-        },
-        {
-          id_reserva: 2,
-          id_aula: 2,
-          id_usuario: 102,
-          fecha_reserva: "2026-10-30",
-          hora_inicio: "10:00",
-          hora_fin: "12:00",
-          motivo: "Taller de programación",
-          estado: "Pendiente",
-          usuarios: { nombre: "Ruth", apellido: "Sarmiento", email: "ruth@institucion.edu" },
-          aulas: { nombre_aula: "Aula Especializada Informática", codigo_aula: "A-102" },
-        },
-      ]);
-      setActivities([
-        { hora: "12:45", usuario: "Admin Z", accion: "Aprobó horario", detalle: "Matemáticas - Charris Sarmiento" },
-        { hora: "12:30", usuario: "Profesor X", accion: "Nueva reserva", detalle: "Informática - 09:00" },
-      ]);
+      setStats({ docentesActivos: 0, aulasHabilitadas: 0, totalReservas: 0, pendientes: 0 });
+      setQueue([]);
+      setActivities([]);
+      setAulas([]);
+      setReservas([]);
       setLoading(false);
-      setError("La base de datos no está conectada; se muestran métricas y solicitudes pre-cargadas del entorno institucional.");
+      setError("La base de datos no está conectada. Revisa la configuración de Supabase para ver métricas reales del panel.");
       return;
     }
 
@@ -149,22 +153,24 @@ export default function AdminPage() {
       if (reservasResult.error) throw reservasResult.error;
 
       const usuarios = usuariosResult.data ?? [];
-      const aulas = aulasResult.data ?? [];
-      const reservas = reservasResult.data as ReservationRecord[] | [];
-      const pendingReservations = reservas.filter((reserva) => (reserva.estado ?? "").toLowerCase() === "pendiente");
+      const nextAulas = aulasResult.data ?? [];
+      const nextReservas = (reservasResult.data as ReservationRecord[] | []) ?? [];
+      const pendingReservations = nextReservas.filter((reserva) => normalizeReservationState(reserva.estado).toLowerCase() === "pendiente");
 
+      setAulas(nextAulas);
+      setReservas(nextReservas);
       setStats({
         docentesActivos: usuarios.filter((usuario) => String(usuario.estado ?? "").toLowerCase() === "activo").length,
-        aulasHabilitadas: aulas.filter((aula) => String(aula.estado ?? "").toLowerCase() === "activo").length,
-        totalReservas: reservas.length,
+        aulasHabilitadas: nextAulas.filter((aula) => String(aula.estado ?? "").toLowerCase() === "activo").length,
+        totalReservas: nextReservas.length,
         pendientes: pendingReservations.length,
       });
       setQueue(pendingReservations.slice(0, 6));
       setActivities(
-        reservas.slice(0, 4).map((reserva) => ({
+        nextReservas.slice(0, 4).map((reserva) => ({
           hora: (reserva.fecha_reserva ?? "").slice(5, 10).replace("-", "/") || "Hoy",
           usuario: `${toTitle(reserva.usuarios?.nombre)} ${toTitle(reserva.usuarios?.apellido)}`.trim() || "Docente",
-          accion: reserva.estado ?? "Reservada",
+          accion: normalizeReservationState(reserva.estado),
           detalle: `${reserva.aulas?.nombre_aula ?? "Aula institucional"} - ${reserva.hora_inicio ?? "09:00"}`,
         })),
       );
@@ -235,6 +241,7 @@ export default function AdminPage() {
     }
 
     setEmail(sessionEmail || "");
+    setWeekDates(getCurrentWeekDates());
     void loadStats();
 
     const client = supabase;

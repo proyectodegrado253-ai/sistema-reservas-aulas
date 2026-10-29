@@ -472,48 +472,42 @@ export default function DashboardPage() {
                 </span>
               </div>
 
-              <div className="dashboard-agenda-list">
-                {timelineGrid.map((aula) => {
-                  const freeCount = aula.slots.filter((slot) => !slot.occupied).length;
+              <div className="timeline-shell" aria-label="Línea de tiempo de aulas">
+                <div className="timeline-grid">
+                  <div className="timeline-grid-corner" />
+                  {timelineSlots.map((slot) => (
+                    <div key={slot.start} className="timeline-hour-label">
+                      {slot.start}
+                    </div>
+                  ))}
 
-                  return (
-                    <div
-                      key={aula.id_aula}
-                      className="agenda-room-card"
-                      onClick={() => setSelectedAgendaRoom({ id_aula: aula.id_aula, nombre_aula: aula.nombre_aula, codigo_aula: aula.codigo_aula, slots: aula.slots.map((slot) => ({ start: slot.start, end: slot.end, occupied: slot.occupied })) })}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          setSelectedAgendaRoom({ id_aula: aula.id_aula, nombre_aula: aula.nombre_aula, codigo_aula: aula.codigo_aula, slots: aula.slots.map((slot) => ({ start: slot.start, end: slot.end, occupied: slot.occupied })) });
-                        }
-                      }}
-                    >
-                      <div className="agenda-room-head">
-                        <div>
-                          <span className="agenda-room-code">{aula.codigo_aula ?? "AULA"}</span>
-                          <strong>{aula.nombre_aula}</strong>
-                        </div>
-                        <span className="agenda-room-free">{freeCount} libres</span>
-                      </div>
+                  {timelineGrid.map((aula) => (
+                    <Fragment key={aula.id_aula}>
+                      <button
+                        type="button"
+                        className="timeline-room-meta"
+                        onClick={() => setSelectedAgendaRoom({ id_aula: aula.id_aula, nombre_aula: aula.nombre_aula, codigo_aula: aula.codigo_aula, slots: aula.slots.map((slot) => ({ start: slot.start, end: slot.end, occupied: slot.occupied })) })}
+                      >
+                        <span>{aula.codigo_aula ?? "AULA"}</span>
+                        <strong>{aula.nombre_aula}</strong>
+                      </button>
 
-                      <div className="agenda-track" aria-label={`Agenda de ${aula.nombre_aula}`}>
+                      <div className="timeline-room-track" aria-label={`Agenda de ${aula.nombre_aula}`}>
                         {aula.slots.map((slot) => (
                           <button
                             key={`${aula.id_aula}-${slot.start}`}
                             type="button"
-                            className={slot.occupied ? "agenda-slot occupied" : "agenda-slot free"}
-                            onClick={() => !slot.occupied && openTimelineSlot(aula.id_aula, { start: slot.start, end: slot.end })}
+                            className={slot.occupied ? "timeline-band occupied" : "timeline-band free"}
                             title={slot.occupied ? `${aula.nombre_aula} ocupada ${slot.start} - ${slot.end}` : `Reservar ${aula.nombre_aula} ${slot.start} - ${slot.end}`}
+                            onClick={() => !slot.occupied && openTimelineSlot(aula.id_aula, { start: slot.start, end: slot.end })}
                           >
-                            <span>{slot.occupied ? "Ocupado" : slot.start}</span>
+                            <span>{slot.occupied ? "Reservado" : slot.start}</span>
                           </button>
                         ))}
                       </div>
-                    </div>
-                  );
-                })}
+                    </Fragment>
+                  ))}
+                </div>
               </div>
             </section>
 
