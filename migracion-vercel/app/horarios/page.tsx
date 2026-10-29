@@ -1,642 +1,327 @@
 "use client";
 
 import RoleSidebar from "@/components/role-sidebar";
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import {
-  adaptExtractedHorario,
-  extractDocenteNameFromText,
-  extractPdfMetadata,
-  extractPrimaryProfesorFromText,
-  extractTextFromPdf,
-  type HorarioPayload,
-} from "@/lib/horario-extractor";
+import { useEffect, useMemo, useState } from "react";
 
-type HorarioRecord = {
-  id_horario: number;
-  id_usuario: number;
+type RoomItem = {
   id_aula: number;
-  dia_semana: string;
+  nombre_aula: string;
+  codigo_aula: string;
+  icon: string;
+  estado?: string;
+};
+
+type ReservationItem = {
+  id_reserva: number;
+  id_aula: number;
+  id_usuario: number;
+  fecha_reserva: string;
   hora_inicio: string;
   hora_fin: string;
-  usuarios?: { nombre?: string; apellido?: string } | null;
+  motivo?: string | null;
+  estado?: string;
+  usuarios?: { nombre?: string; apellido?: string; email?: string } | null;
   aulas?: { nombre_aula?: string; codigo_aula?: string } | null;
 };
 
-type FormState = {
-  id_horario: number | null;
-  id_usuario: string;
-  id_aula: string;
-  dia_semana: string;
-  hora_inicio: string;
-  hora_fin: string;
+type DraftReservation = {
+  id_reserva?: number;
+  roomId: number;
+  roomName: string;
+  date: string;
+  start: string;
+  end: string;
+  teacher: string;
+  subject: string;
 };
 
-const emptyForm: FormState = {
-  id_horario: null,
-  id_usuario: "",
-  id_aula: "",
-  dia_semana: "Lunes",
-  hora_inicio: "08:00",
-  hora_fin: "10:00",
-};
-
-const normalizeText = (value: string | null | undefined) =>
-  (value ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-
-const fallbackHorarios: HorarioRecord[] = [
-  { id_horario: 1, id_usuario: 2, id_aula: 1, dia_semana: "Lunes", hora_inicio: "08:00", hora_fin: "10:00", usuarios: { nombre: "Profesor", apellido: "Asignado" }, aulas: { nombre_aula: "Aula 101", codigo_aula: "A-101" } },
-  { id_horario: 2, id_usuario: 2, id_aula: 2, dia_semana: "Miércoles", hora_inicio: "12:00", hora_fin: "14:00", usuarios: { nombre: "Profesor", apellido: "Asignado" }, aulas: { nombre_aula: "Laboratorio 2", codigo_aula: "LAB-2" } },
-  { id_horario: 3, id_usuario: 3, id_aula: 3, dia_semana: "Viernes", hora_inicio: "07:00", hora_fin: "09:00", usuarios: { nombre: "Ana", apellido: "Gómez" }, aulas: { nombre_aula: "Salón de grados", codigo_aula: "SAL-3" } },
+const defaultRooms: RoomItem[] = [
+  { id_aula: 1, nombre_aula: "Matemáticas", codigo_aula: "A-101", icon: "📐" },
+  { id_aula: 2, nombre_aula: "Informática", codigo_aula: "A-102", icon: "💻" },
+  { id_aula: 3, nombre_aula: "Innovación", codigo_aula: "A-103", icon: "💡" },
+  { id_aula: 4, nombre_aula: "Punto Vive Digital", codigo_aula: "A-104", icon: "📡" },
+  { id_aula: 5, nombre_aula: "Química", codigo_aula: "A-106", icon: "🧪" },
 ];
 
-const getLocalStorageJson = <T,>(key: string) => {
-  try {
-    return JSON.parse(localStorage.getItem(key) ?? "null") as T | null;
-  } catch {
-    return null;
-  }
-};
+const defaultReservations: ReservationItem[] = [
+  { id_reserva: 1, id_aula: 1, id_usuario: 2, fecha_reserva: "2026-10-29", hora_inicio: "08:00", hora_fin: "10:00", motivo: "Matemáticas", estado: "Pendiente", usuarios: { nombre: "Charris", apellido: "Sarmiento Yira Paulina" }, aulas: { nombre_aula: "Matemáticas", codigo_aula: "A-101" } },
+  { id_reserva: 2, id_aula: 1, id_usuario: 2, fecha_reserva: "2026-10-29", hora_inicio: "12:00", hora_fin: "14:00", motivo: "Física", estado: "Pendiente", usuarios: { nombre: "Muñoz", apellido: "Ebratt Ricardo Alberto" }, aulas: { nombre_aula: "Matemáticas", codigo_aula: "A-101" } },
+  { id_reserva: 3, id_aula: 2, id_usuario: 2, fecha_reserva: "2026-10-29", hora_inicio: "09:00", hora_fin: "11:00", motivo: "Programación", estado: "Pendiente", usuarios: { nombre: "Martes", apellido: "Barrios Astrid" }, aulas: { nombre_aula: "Informática", codigo_aula: "A-102" } },
+  { id_reserva: 4, id_aula: 3, id_usuario: 2, fecha_reserva: "2026-10-29", hora_inicio: "14:00", hora_fin: "16:00", motivo: "Robótica", estado: "Pendiente", usuarios: { nombre: "Niebles", apellido: "Cardenas Manuel Julian" }, aulas: { nombre_aula: "Innovación", codigo_aula: "A-103" } },
+  { id_reserva: 5, id_aula: 4, id_usuario: 2, fecha_reserva: "2026-10-29", hora_inicio: "10:00", hora_fin: "12:00", motivo: "Diseño", estado: "Pendiente", usuarios: { nombre: "Cuentas", apellido: "Patiño Milagro De Jesus" }, aulas: { nombre_aula: "Punto Vive Digital", codigo_aula: "A-104" } },
+  { id_reserva: 6, id_aula: 4, id_usuario: 2, fecha_reserva: "2026-10-29", hora_inicio: "13:00", hora_fin: "15:00", motivo: "Redes", estado: "Pendiente", usuarios: { nombre: "García", apellido: "Mercado Luis Ricardo" }, aulas: { nombre_aula: "Punto Vive Digital", codigo_aula: "A-104" } },
+  { id_reserva: 7, id_aula: 4, id_usuario: 2, fecha_reserva: "2026-10-29", hora_inicio: "16:00", hora_fin: "18:00", motivo: "Comunicación", estado: "Pendiente", usuarios: { nombre: "Redondo", apellido: "Gutierrez Heidy Esther" }, aulas: { nombre_aula: "Punto Vive Digital", codigo_aula: "A-104" } },
+];
 
-const saveHorariosToLocal = (records: HorarioRecord[]) => {
-  localStorage.setItem("cache-horarios", JSON.stringify(records));
-};
+const hourMarkers = ["07:00", "10:00", "12:00", "15:00", "18:00"];
+const startOfDayMinutes = 7 * 60;
+const endOfDayMinutes = 18 * 60;
+const totalMinutes = endOfDayMinutes - startOfDayMinutes;
 
-const saveSingleHorario = async (payload: { id_usuario: number; id_aula: number; dia_semana: string; hora_inicio: string; hora_fin: string }) => {
-  if (!supabase) {
-    const current = getLocalStorageJson<HorarioRecord[]>("cache-horarios") ?? [];
-    const actualUsuarios = getLocalStorageJson<Array<Record<string, any>>>("cache-usuarios") ?? [];
-    const actualAulas = getLocalStorageJson<Array<Record<string, any>>>("cache-aulas") ?? [];
-    const display = resolveHorarioDisplay(payload.id_usuario, payload.id_aula, actualUsuarios, actualAulas);
+function timeToMinutes(value: string) {
+  const [hours, minutes] = value.split(":").map(Number);
+  return hours * 60 + minutes;
+}
 
-    const next: HorarioRecord = {
-      id_horario: Date.now(),
-      id_usuario: payload.id_usuario,
-      id_aula: payload.id_aula,
-      dia_semana: payload.dia_semana,
-      hora_inicio: payload.hora_inicio,
-      hora_fin: payload.hora_fin,
-      usuarios: { nombre: display.usuario.nombre, apellido: display.usuario.apellido },
-      aulas: { nombre_aula: display.aula.nombre_aula, codigo_aula: display.aula.codigo_aula },
-    };
-    const updated = [next, ...current];
-    saveHorariosToLocal(updated);
-    return updated;
-  }
+function minutesToTime(value: number) {
+  const normalized = Math.max(0, Math.min(value, 23 * 60 + 59));
+  const hours = Math.floor(normalized / 60);
+  const minutes = normalized % 60;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
 
-  const { error } = await supabase.from("horarios_docentes").insert({
-    id_usuario: payload.id_usuario,
-    id_aula: payload.id_aula,
-    dia_semana: payload.dia_semana,
-    hora_inicio: payload.hora_inicio,
-    hora_fin: payload.hora_fin,
-  });
-
-  if (error) {
-    throw error;
-  }
-
-  return null;
-};
-
-const getProfessorLabel = (usuario?: Record<string, any> | null) => {
-  if (!usuario) return "Sin profesor";
-  return `${usuario.nombre ?? ""} ${usuario.apellido ?? ""}`.trim() || usuario.email || "Profesor";
-};
-
-const matchPersonaNombre = (input: string, candidate: string) =>
-  normalizeText(input) === normalizeText(candidate) || normalizeText(input).includes(normalizeText(candidate)) || normalizeText(candidate).includes(normalizeText(input));
-
-const buildEmailFromNombre = (nombreCompleto: string) => {
-  const compact = normalizeText(nombreCompleto).replace(/[^a-z0-9]+/g, ".").replace(/^\.|\.$/g, "");
-  return compact ? `${compact}@institucion.edu` : "docente@institucion.edu";
-};
-
-const resolveHorarioDisplay = (idUsuario: number | null, idAula: number | null, currentUsuarios: Array<Record<string, any>>, currentAulas: Array<Record<string, any>>) => {
-  const profesor = currentUsuarios.find((usuario) => Number(usuario.id_usuario) === Number(idUsuario));
-  const aula = currentAulas.find((room) => Number(room.id_aula) === Number(idAula));
-
+function getReservationStyle(start: string, end: string) {
+  const left = ((timeToMinutes(start) - startOfDayMinutes) / totalMinutes) * 100;
+  const width = ((timeToMinutes(end) - timeToMinutes(start)) / totalMinutes) * 100;
   return {
-    usuario: profesor ?? { nombre: "Docente", apellido: "Sistema" },
-    aula: aula ?? { nombre_aula: "Aula asignada", codigo_aula: "SISTEMA" },
+    left: `${left}%`,
+    width: `${Math.max(width, 12)}%`,
   };
-};
+}
+
+function formatShortDate(date: Date) {
+  return date.toLocaleDateString("es-ES", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+}
+
+function getTeacherNameFromReservation(reservation: ReservationItem) {
+  const teacher = reservation.usuarios ? `${reservation.usuarios.nombre ?? ""} ${reservation.usuarios.apellido ?? ""}`.trim() : "Docente";
+  return teacher || "Docente";
+}
+
+function buildFreeSlots(reservations: ReservationItem[] = []) {
+  const occupied = reservations
+    .map((reservation) => ({
+      start: timeToMinutes(reservation.hora_inicio),
+      end: timeToMinutes(reservation.hora_fin),
+    }))
+    .sort((a, b) => a.start - b.start);
+
+  const free: Array<{ start: string; end: string }> = [];
+  let current = startOfDayMinutes;
+
+  for (const segment of occupied) {
+    if (current < segment.start) {
+      free.push({ start: minutesToTime(current), end: minutesToTime(segment.start) });
+    }
+    current = Math.max(current, segment.end);
+  }
+
+  if (current < endOfDayMinutes) {
+    free.push({ start: minutesToTime(current), end: minutesToTime(endOfDayMinutes) });
+  }
+
+  return free.filter((slot) => timeToMinutes(slot.end) > timeToMinutes(slot.start));
+}
 
 export default function HorariosPage() {
-  const [horarios, setHorarios] = useState<HorarioRecord[]>([]);
-  const [usuarios, setUsuarios] = useState<Array<Record<string, any>>>([]);
-  const [aulas, setAulas] = useState<Array<Record<string, any>>>([]);
-  const [search, setSearch] = useState("");
-  const [selectedProfessorId, setSelectedProfessorId] = useState<string>("");
-  const role = typeof window !== "undefined" ? localStorage.getItem("session-role") : "Profesor";
-  const currentUserId = typeof window !== "undefined" ? Number(localStorage.getItem("session-user-id") ?? 0) : 0;
-  const isAdmin = role === "Superadministrador";
-  const currentUser = usuarios.find((usuario) => Number(usuario.id_usuario) === Number(currentUserId));
-  const [form, setForm] = useState<FormState>(emptyForm);
-  const [message, setMessage] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [pdfBusy, setPdfBusy] = useState(false);
-  const [pdfText, setPdfText] = useState("");
-  const [parsedHorarios, setParsedHorarios] = useState<HorarioPayload[]>([]);
-
-  const loadData = async () => {
-    const savedHorarios = getLocalStorageJson<HorarioRecord[]>("cache-horarios");
-    const savedUsuarios = getLocalStorageJson<Array<Record<string, any>>>("cache-usuarios");
-    const savedAulas = getLocalStorageJson<Array<Record<string, any>>>("cache-aulas");
-    const currentRole = localStorage.getItem("session-role") ?? "Profesor";
-    const currentUserIdFromStorage = Number(localStorage.getItem("session-user-id") ?? 0);
-
-    if (!supabase) {
-      const finalUsuarios = savedUsuarios?.length ? savedUsuarios : [
-        { id_usuario: 2, nombre: "Profesor", apellido: "Asignado", email: "profesor@sistema.com" },
-        { id_usuario: 3, nombre: "Ana", apellido: "Gómez", email: "ana.gomez@institucion.edu" },
-      ];
-      const finalAulas = savedAulas?.length ? savedAulas : [
-        { id_aula: 1, nombre_aula: "Aula 101", codigo_aula: "A-101" },
-        { id_aula: 2, nombre_aula: "Laboratorio 2", codigo_aula: "LAB-2" },
-        { id_aula: 3, nombre_aula: "Salón de grados", codigo_aula: "SAL-3" },
-      ];
-      const finalHorarios = (savedHorarios?.length ? savedHorarios : fallbackHorarios).filter((horario) => {
-        if (currentRole === "Superadministrador") return true;
-        return Number(horario.id_usuario) === Number(currentUserIdFromStorage);
-      });
-      localStorage.setItem("cache-usuarios", JSON.stringify(finalUsuarios));
-      localStorage.setItem("cache-aulas", JSON.stringify(finalAulas));
-      localStorage.setItem("cache-horarios", JSON.stringify(finalHorarios));
-      setUsuarios(finalUsuarios);
-      setAulas(finalAulas);
-      setHorarios(finalHorarios);
-      setSelectedProfessorId(currentRole === "Superadministrador" ? "" : String(currentUserIdFromStorage || ""));
-      return;
-    }
-
-    try {
-      const horariosQuery = currentRole === "Superadministrador"
-        ? supabase.from("horarios_docentes").select("*, usuarios(nombre, apellido, email), aulas(nombre_aula, codigo_aula)").order("dia_semana", { ascending: true })
-        : supabase.from("horarios_docentes").select("*, usuarios(nombre, apellido, email), aulas(nombre_aula, codigo_aula)").eq("id_usuario", Number(currentUserIdFromStorage)).order("dia_semana", { ascending: true });
-
-      const [usuariosResult, aulasResult, horariosResult] = await Promise.all([
-        supabase.from("usuarios").select("*").order("nombre", { ascending: true }),
-        supabase.from("aulas").select("*").order("nombre_aula", { ascending: true }),
-        horariosQuery,
-      ]);
-
-      if (usuariosResult.error || aulasResult.error || horariosResult.error) {
-        throw usuariosResult.error ?? aulasResult.error ?? horariosResult.error ?? new Error("Sin datos disponibles");
-      }
-
-      const nextUsuarios = (usuariosResult.data as Array<Record<string, any>> | null)?.length ? (usuariosResult.data as Array<Record<string, any>>) : [
-        { id_usuario: 2, nombre: "Profesor", apellido: "Asignado", email: "profesor@sistema.com" },
-        { id_usuario: 3, nombre: "Ana", apellido: "Gómez", email: "ana.gomez@institucion.edu" },
-      ];
-      const nextAulas = (aulasResult.data as Array<Record<string, any>> | null)?.length ? (aulasResult.data as Array<Record<string, any>>) : [
-        { id_aula: 1, nombre_aula: "Aula 101", codigo_aula: "A-101" },
-        { id_aula: 2, nombre_aula: "Laboratorio 2", codigo_aula: "LAB-2" },
-        { id_aula: 3, nombre_aula: "Salón de grados", codigo_aula: "SAL-3" },
-      ];
-      const nextHorarios = (horariosResult.data as HorarioRecord[] | null)?.length ? (horariosResult.data as HorarioRecord[]) : fallbackHorarios;
-      const visibleHorarios = currentRole === "Superadministrador"
-        ? nextHorarios
-        : nextHorarios.filter((horario) => Number(horario.id_usuario) === Number(currentUserIdFromStorage));
-
-      localStorage.setItem("cache-usuarios", JSON.stringify(nextUsuarios));
-      localStorage.setItem("cache-aulas", JSON.stringify(nextAulas));
-      localStorage.setItem("cache-horarios", JSON.stringify(visibleHorarios));
-      setUsuarios(nextUsuarios);
-      setAulas(nextAulas);
-      setHorarios(visibleHorarios);
-      setSelectedProfessorId(currentRole === "Superadministrador" ? "" : String(currentUserIdFromStorage || ""));
-    } catch (error) {
-      const fallbackUsuariosData = savedUsuarios?.length ? savedUsuarios : [
-        { id_usuario: 2, nombre: "Profesor", apellido: "Asignado", email: "profesor@sistema.com" },
-        { id_usuario: 3, nombre: "Ana", apellido: "Gómez", email: "ana.gomez@institucion.edu" },
-      ];
-      const fallbackAulasData = savedAulas?.length ? savedAulas : [
-        { id_aula: 1, nombre_aula: "Aula 101", codigo_aula: "A-101" },
-        { id_aula: 2, nombre_aula: "Laboratorio 2", codigo_aula: "LAB-2" },
-        { id_aula: 3, nombre_aula: "Salón de grados", codigo_aula: "SAL-3" },
-      ];
-      const fallbackData = savedHorarios?.length ? savedHorarios : fallbackHorarios;
-      const visibleFallback = currentRole === "Superadministrador"
-        ? fallbackData
-        : fallbackData.filter((horario) => Number(horario.id_usuario) === Number(currentUserIdFromStorage));
-      localStorage.setItem("cache-usuarios", JSON.stringify(fallbackUsuariosData));
-      localStorage.setItem("cache-aulas", JSON.stringify(fallbackAulasData));
-      localStorage.setItem("cache-horarios", JSON.stringify(visibleFallback));
-      setUsuarios(fallbackUsuariosData);
-      setAulas(fallbackAulasData);
-      setHorarios(visibleFallback);
-      setSelectedProfessorId(currentRole === "Superadministrador" ? "" : String(currentUserIdFromStorage || ""));
-      console.warn("Fallo en Supabase para horarios.", error);
-    }
-  };
+  const [role, setRole] = useState("Profesor");
+  const [selectedDate, setSelectedDate] = useState("");
+  const [dateOptions, setDateOptions] = useState<Array<{ value: string; label: string }>>([]);
+  const [rooms, setRooms] = useState<RoomItem[]>(defaultRooms);
+  const [reservations, setReservations] = useState<ReservationItem[]>(defaultReservations);
+  const [draft, setDraft] = useState<DraftReservation | null>(null);
+  const [contextReservation, setContextReservation] = useState<ReservationItem | null>(null);
+  const [notice, setNotice] = useState("");
 
   useEffect(() => {
-    loadData();
+    const storedRole = localStorage.getItem("session-role") ?? "Profesor";
+    const today = new Date();
+    const nextOptions = [0, 1, 2].map((offset) => {
+      const date = new Date(today);
+      date.setDate(today.getDate() + offset);
+      return {
+        value: date.toISOString().slice(0, 10),
+        label: offset === 0 ? "Hoy" : offset === 1 ? "Mañana" : formatShortDate(date),
+      };
+    });
+
+    setRole(storedRole);
+    setDateOptions(nextOptions);
+    setSelectedDate((current) => current || nextOptions[0]?.value || "");
   }, []);
 
-  const visibleHorarios = useMemo(() => {
-    if (isAdmin) return horarios;
-    return horarios.filter((horario) => Number(horario.id_usuario) === Number(currentUserId));
-  }, [horarios, isAdmin, currentUserId]);
-
-  const filtered = useMemo(() => {
-    const query = normalizeText(search);
-    if (!query) return visibleHorarios;
-
-    return visibleHorarios.filter((horario) => {
-      const haystack = [
-        horario.dia_semana,
-        horario.usuarios?.nombre ?? "",
-        horario.usuarios?.apellido ?? "",
-        horario.aulas?.nombre_aula ?? "",
-        horario.aulas?.codigo_aula ?? "",
-      ].join(" ");
-      return normalizeText(haystack).includes(query);
-    });
-  }, [visibleHorarios, search]);
-
-  const teacherSchedule = useMemo(() => {
-    if (!selectedProfessorId) return [];
-    return visibleHorarios.filter((horario) => Number(horario.id_usuario) === Number(selectedProfessorId));
-  }, [visibleHorarios, selectedProfessorId]);
-
-  const hydrateFormFromExtracted = (items: HorarioPayload[]) => {
-    if (!items.length) return;
-    const first = items[0];
-    setForm({
-      id_horario: null,
-      id_usuario: String(first.id_usuario),
-      id_aula: String(first.id_aula),
-      dia_semana: first.dia_semana,
-      hora_inicio: first.hora_inicio,
-      hora_fin: first.hora_fin,
-    });
-    setSelectedProfessorId(String(first.id_usuario));
-  };
-
-  const ensureProfessorFromPdf = async (nombreCompleto: string, metadata?: ReturnType<typeof extractPdfMetadata>) => {
-    if (!nombreCompleto.trim()) {
-      return { usuario: usuarios[0] ?? null, created: false, message: "" };
-    }
-
-    const normalizedNombre = nombreCompleto.trim();
-    const nombreParts = normalizedNombre.split(/\s+/);
-    const nombre = nombreParts[0] ?? "Docente";
-    const apellido = nombreParts.slice(1).join(" ") || "PDF";
-    const email = metadata?.email || buildEmailFromNombre(normalizedNombre);
-
-    const existing = usuarios.find((usuario) => {
-      const nombreUsuario = `${usuario.nombre ?? ""} ${usuario.apellido ?? ""}`.trim();
-      const sameName = matchPersonaNombre(normalizedNombre, nombreUsuario);
-      const sameEmail = metadata?.email ? normalizeText(usuario.email ?? "") === normalizeText(metadata.email) : false;
-      return sameName || sameEmail || matchPersonaNombre(normalizedNombre, usuario.email ?? "");
-    });
-
-    if (existing) {
-      if (metadata?.email && existing.email !== metadata.email) {
-        const mergedUsuario = {
-          ...existing,
-          email: metadata.email,
-          nombre: existing.nombre || nombre,
-          apellido: existing.apellido || apellido,
-        };
-
-        const updatedUsuarios = usuarios.map((usuario) =>
-          Number(usuario.id_usuario) === Number(existing.id_usuario) ? mergedUsuario : usuario
-        );
-
-        setUsuarios(updatedUsuarios);
-        localStorage.setItem("cache-usuarios", JSON.stringify(updatedUsuarios));
-
-        if (supabase) {
-          await supabase.from("usuarios").update({
-            nombre: mergedUsuario.nombre,
-            apellido: mergedUsuario.apellido,
-            email: mergedUsuario.email,
-          }).eq("id_usuario", existing.id_usuario);
-          await loadData();
+  useEffect(() => {
+    const loadTimelineData = async () => {
+      try {
+        if (!supabase) {
+          setRooms(defaultRooms);
+          setReservations(defaultReservations);
+          return;
         }
+
+        const [aulasResult, reservasResult] = await Promise.all([
+          supabase.from("aulas").select("id_aula, nombre_aula, codigo_aula, estado").order("nombre_aula", { ascending: true }),
+          supabase.from("reservas").select("*, usuarios(nombre, apellido, email), aulas(nombre_aula, codigo_aula)").order("fecha_reserva", { ascending: false }),
+        ]);
+
+        if (aulasResult.error) throw aulasResult.error;
+        if (reservasResult.error) throw reservasResult.error;
+
+        const nextRooms = (aulasResult.data ?? []).length
+          ? (aulasResult.data ?? []).map((room) => ({
+              id_aula: Number(room.id_aula),
+              nombre_aula: room.nombre_aula ?? `Aula ${room.id_aula}`,
+              codigo_aula: room.codigo_aula ?? `A-${room.id_aula}`,
+              icon: ["📐", "💻", "💡", "📡", "🧪"][Number(room.id_aula) % 5],
+              estado: room.estado ?? "Activo",
+            }))
+          : defaultRooms;
+
+        const nextReservations = (reservasResult.data ?? []).map((reservation) => ({
+          id_reserva: Number(reservation.id_reserva),
+          id_aula: Number(reservation.id_aula),
+          id_usuario: Number(reservation.id_usuario),
+          fecha_reserva: reservation.fecha_reserva,
+          hora_inicio: reservation.hora_inicio ?? "09:00",
+          hora_fin: reservation.hora_fin ?? "11:00",
+          motivo: reservation.motivo ?? "Reserva de aula",
+          estado: reservation.estado ?? "Pendiente",
+          usuarios: reservation.usuarios ?? null,
+          aulas: reservation.aulas ?? null,
+        })) as ReservationItem[];
+
+        setRooms(nextRooms);
+        setReservations(nextReservations.length ? nextReservations : defaultReservations);
+      } catch (error) {
+        console.warn("No se pudo cargar la línea de tiempo real; se conserva el fallback visual.", error);
+        setRooms(defaultRooms);
+        setReservations(defaultReservations);
       }
-
-      return { usuario: existing, created: false, message: `Se actualizó el docente ${getProfessorLabel(existing)} con los datos del PDF.` };
-    }
-
-    const createdUser = {
-      id_usuario: Date.now(),
-      nombre,
-      apellido,
-      email,
-      password: "123456",
-      id_rol: 2,
-      estado: "Activo",
-      roles: { nombre_rol: "Profesor" },
     };
 
-    const nextUsuarios = [createdUser, ...usuarios];
-    setUsuarios(nextUsuarios);
-    localStorage.setItem("cache-usuarios", JSON.stringify(nextUsuarios));
+    void loadTimelineData();
+  }, [role]);
 
-    if (supabase) {
-      const { error } = await supabase.from("usuarios").insert({
-        nombre,
-        apellido,
-        email,
-        password: "123456",
-        id_rol: 2,
-        estado: "Activo",
-      });
-      if (error) {
-        console.warn("No se pudo guardar el docente nuevo en Supabase:", error);
-      } else {
-        await loadData();
-      }
-    }
+  const isAdmin = role === "Superadministrador";
+  const activeDate = selectedDate || dateOptions[0]?.value || "";
 
-    return { usuario: createdUser, created: true, message: `Se creó automáticamente el docente ${nombre} ${apellido}.` };
-  };
+  const visibleReservations = useMemo(
+    () => reservations.filter((reservation) => reservation.fecha_reserva === activeDate),
+    [reservations, activeDate],
+  );
 
-  const ensureAulaFromPdf = async (nombreAula: string) => {
-    if (!nombreAula.trim()) {
-      return { aula: aulas[0] ?? null, created: false, message: "" };
-    }
+  const handleFreeSlotClick = (room: RoomItem, start: string, end: string) => {
+    const sessionName = localStorage.getItem("session-name") || "Profesor asignado";
 
-    const existing = aulas.find((aula) => {
-      const haystack = `${aula.codigo_aula ?? ""} ${aula.nombre_aula ?? ""}`;
-      return matchPersonaNombre(nombreAula, haystack) || matchPersonaNombre(nombreAula, aula.codigo_aula ?? "");
+    setDraft({
+      roomId: room.id_aula,
+      roomName: room.nombre_aula,
+      date: activeDate,
+      start,
+      end,
+      teacher: sessionName,
+      subject: "Clase / práctica / reunión",
     });
+    setContextReservation(null);
+    setNotice("");
+  };
 
-    if (existing) {
-      return { aula: existing, created: false, message: `Se encontró el aula ${existing.nombre_aula}.` };
-    }
+  const handleOccupiedSlotClick = (reservation: ReservationItem) => {
+    if (!isAdmin) return;
+    setContextReservation(reservation);
+    setDraft(null);
+  };
 
-    const normalizedNombre = nombreAula.trim();
-    const codigo = normalizedNombre.match(/[A-Z0-9-]+/i)?.[0]?.toUpperCase() || `A-${Date.now().toString().slice(-4)}`;
-    const createdAula = {
-      id_aula: Date.now(),
-      codigo_aula: codigo,
-      nombre_aula: normalizedNombre,
-      capacidad: 30,
-      equipamiento: "Proyector",
-      estado: "Activo",
-    };
+  const applyAdminAction = async (action: "cancelar" | "liberar" | "editar") => {
+    if (!contextReservation) return;
 
-    const nextAulas = [createdAula, ...aulas];
-    setAulas(nextAulas);
-    localStorage.setItem("cache-aulas", JSON.stringify(nextAulas));
-
-    if (supabase) {
-      const { error } = await supabase.from("aulas").insert({
-        codigo_aula: codigo,
-        nombre_aula: normalizedNombre,
-        capacidad: 30,
-        equipamiento: "Proyector",
-        estado: "Activo",
+    if (action === "editar") {
+      setDraft({
+        id_reserva: contextReservation.id_reserva,
+        roomId: contextReservation.id_aula,
+        roomName: contextReservation.aulas?.nombre_aula ?? "Aula",
+        date: contextReservation.fecha_reserva,
+        start: contextReservation.hora_inicio,
+        end: contextReservation.hora_fin,
+        teacher: getTeacherNameFromReservation(contextReservation),
+        subject: contextReservation.motivo ?? "Reserva / sesión",
       });
-      if (error) {
-        console.warn("No se pudo guardar el aula nueva en Supabase:", error);
-      } else {
-        await loadData();
-      }
-    }
-
-    return { aula: createdAula, created: true, message: `Se creó automáticamente el aula ${normalizedNombre}.` };
-  };
-
-  const handleChange = (field: keyof FormState, value: string) => {
-    setForm((current) => ({ ...current, [field]: value }));
-  };
-
-  const hasDuplicateHorario = (
-    payload: { id_usuario: number; id_aula: number; dia_semana: string; hora_inicio: string; hora_fin: string },
-    ignoreHorarioId?: number | null
-  ) => {
-    const exactMatch = horarios.some((horario) => {
-      if (ignoreHorarioId && Number(horario.id_horario) === Number(ignoreHorarioId)) {
-        return false;
-      }
-      return Number(horario.id_usuario) === Number(payload.id_usuario) &&
-        Number(horario.id_aula) === Number(payload.id_aula) &&
-        horario.dia_semana === payload.dia_semana &&
-        horario.hora_inicio === payload.hora_inicio &&
-        horario.hora_fin === payload.hora_fin;
-    });
-
-    return exactMatch;
-  };
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setSaving(true);
-
-    const resolvedIdUsuario = isAdmin ? Number(form.id_usuario) || Number(usuarios[0]?.id_usuario ?? 0) : Number(currentUserId || form.id_usuario || usuarios[0]?.id_usuario || 0);
-    const resolvedIdAula = Number(form.id_aula) || Number(aulas[0]?.id_aula ?? 0);
-
-    const payload = {
-      id_usuario: resolvedIdUsuario,
-      id_aula: resolvedIdAula,
-      dia_semana: form.dia_semana,
-      hora_inicio: form.hora_inicio,
-      hora_fin: form.hora_fin,
-    };
-
-    try {
-      if (!payload.id_usuario || !payload.id_aula) {
-        throw new Error("No hay profesores o aulas disponibles para registrar el horario.");
-      }
-
-      if (hasDuplicateHorario(payload, form.id_horario ?? null)) {
-        throw new Error("Ya existe ese horario para ese docente y aula en ese día y horario.");
-      }
-
-      if (!supabase) {
-        const current = getLocalStorageJson<HorarioRecord[]>("cache-horarios") ?? [];
-        const display = resolveHorarioDisplay(payload.id_usuario, payload.id_aula, usuarios, aulas);
-        const updated = form.id_horario
-          ? current.map((item) => (item.id_horario === form.id_horario ? { ...item, ...payload, id_horario: item.id_horario, usuarios: { nombre: display.usuario.nombre, apellido: display.usuario.apellido }, aulas: { nombre_aula: display.aula.nombre_aula, codigo_aula: display.aula.codigo_aula } } : item))
-          : [{ ...payload, id_horario: Date.now(), usuarios: { nombre: display.usuario.nombre, apellido: display.usuario.apellido }, aulas: { nombre_aula: display.aula.nombre_aula, codigo_aula: display.aula.codigo_aula } }, ...current];
-        const filteredUpdated = updated.filter((item) => isAdmin || Number(item.id_usuario) === Number(currentUserId));
-        saveHorariosToLocal(filteredUpdated);
-        setHorarios(filteredUpdated);
-      } else {
-        if (form.id_horario) {
-          const { error } = await supabase.from("horarios_docentes").update(payload).eq("id_horario", form.id_horario);
-          if (error) throw error;
-        } else {
-          const { error } = await supabase.from("horarios_docentes").insert(payload);
-          if (error) throw error;
-        }
-        await loadData();
-      }
-
-      setMessage(form.id_horario ? "Horario actualizado correctamente." : "Horario registrado correctamente.");
-      setSelectedProfessorId(String(payload.id_usuario));
-      setForm(emptyForm);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "No se pudo guardar el horario.");
-      console.error(error);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleEdit = (horario: HorarioRecord) => {
-    setForm({
-      id_horario: horario.id_horario,
-      id_usuario: String(horario.id_usuario ?? ""),
-      id_aula: String(horario.id_aula ?? ""),
-      dia_semana: horario.dia_semana,
-      hora_inicio: horario.hora_inicio,
-      hora_fin: horario.hora_fin,
-    });
-    setSelectedProfessorId(String(horario.id_usuario));
-    setMessage("Editando horario seleccionado.");
-  };
-
-  const handleDelete = async (id_horario: number) => {
-    if (!id_horario) return;
-    const confirmed = window.confirm("¿Seguro que quieres eliminar este horario?");
-    if (!confirmed) return;
-
-    try {
-      if (!supabase) {
-        const current = getLocalStorageJson<HorarioRecord[]>("cache-horarios") ?? [];
-        const updated = current.filter((item) => item.id_horario !== id_horario);
-        saveHorariosToLocal(updated);
-        setHorarios(updated);
-      } else {
-        const { error } = await supabase.from("horarios_docentes").delete().eq("id_horario", id_horario);
-        if (error) throw error;
-        await loadData();
-      }
-      setMessage("Horario eliminado correctamente.");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "No se pudo eliminar el horario.");
-      console.error(error);
-    }
-  };
-
-  const handlePdfUpload = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    setPdfBusy(true);
-    setMessage("");
-    try {
-      const text = await extractTextFromPdf(file);
-      setPdfText(text);
-
-      const mappedUsuarios = usuarios.map((usuario) => ({
-        id_usuario: Number(usuario.id_usuario),
-        nombre: usuario.nombre,
-        apellido: usuario.apellido,
-        email: usuario.email,
-      }));
-      const mappedAulas = aulas.map((aula) => ({
-        id_aula: Number(aula.id_aula),
-        codigo_aula: aula.codigo_aula,
-        nombre_aula: aula.nombre_aula,
-      }));
-
-      const pdfMetadata = extractPdfMetadata(text);
-      const docenteNombre = extractDocenteNameFromText(text);
-      const docentePrincipal = extractPrimaryProfesorFromText(text, mappedUsuarios) ?? mappedUsuarios[0];
-      const docenteResolved = docenteNombre ? await ensureProfessorFromPdf(docenteNombre, pdfMetadata) : { usuario: docentePrincipal ?? usuarios[0] ?? null, created: false, message: "" };
-
-      const extracted = adaptExtractedHorario(text, mappedUsuarios, mappedAulas);
-
-      const resolvedProfessorId = docenteResolved.usuario?.id_usuario ?? extracted[0]?.id_usuario ?? Number(usuarios[0]?.id_usuario ?? 0);
-      const resolvedAulaId = extracted[0]?.id_aula ?? Number(aulas[0]?.id_aula ?? 0);
-
-      setParsedHorarios(extracted);
-      setForm({
-        id_horario: null,
-        id_usuario: String(resolvedProfessorId || ""),
-        id_aula: String(resolvedAulaId || ""),
-        dia_semana: extracted[0]?.dia_semana ?? "Lunes",
-        hora_inicio: extracted[0]?.hora_inicio ?? "08:00",
-        hora_fin: extracted[0]?.hora_fin ?? "10:00",
-      });
-      setSelectedProfessorId("");
-
-      if (extracted.length) {
-        const detailMessage = docenteResolved.message || `Se detectaron ${extracted.length} horarios automáticamente en el PDF.`;
-        setMessage(detailMessage);
-        await persistParsedHorarios(extracted);
-        return;
-      }
-
-      setMessage(docenteResolved.message || "El PDF se leyó y se preparó la carga, pero no coincidió con los nombres del sistema.");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "No fue posible procesar el PDF.");
-      setPdfText("");
-      setParsedHorarios([]);
-      console.error(error);
-    } finally {
-      setPdfBusy(false);
-    }
-  };
-
-  const persistParsedHorarios = async (scheduleToPersist: HorarioPayload[] = parsedHorarios) => {
-    if (!scheduleToPersist.length) {
-      setMessage("No hay horarios detectados para guardar.");
+      setContextReservation(null);
       return;
     }
 
-    setSaving(true);
     try {
-      const deduplicated: HorarioPayload[] = [];
-      const seen = new Set<string>();
-      for (const item of scheduleToPersist) {
-        const key = `${item.id_usuario}|${item.id_aula}|${item.dia_semana}|${item.hora_inicio}|${item.hora_fin}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          if (hasDuplicateHorario(item, form.id_horario ?? null)) {
-            const profesorNombre = getProfessorLabel(usuarios.find((usuario) => Number(usuario.id_usuario) === Number(item.id_usuario)));
-            setMessage(`No se puede guardar porque el horario de ${profesorNombre} ya existe.`);
-            return;
-          }
-          deduplicated.push(item);
-        }
-      }
-
-      if (!supabase) {
-        const current = getLocalStorageJson<HorarioRecord[]>("cache-horarios") ?? [];
-        const mapped = deduplicated.map((item) => {
-          const display = resolveHorarioDisplay(item.id_usuario, item.id_aula, usuarios, aulas);
-
-          return {
-            id_horario: Date.now() + Math.random(),
-            id_usuario: item.id_usuario,
-            id_aula: item.id_aula,
-            dia_semana: item.dia_semana,
-            hora_inicio: item.hora_inicio,
-            hora_fin: item.hora_fin,
-            usuarios: { nombre: display.usuario.nombre, apellido: display.usuario.apellido },
-            aulas: { nombre_aula: display.aula.nombre_aula, codigo_aula: display.aula.codigo_aula },
-          } satisfies HorarioRecord;
-        });
-
-        const updated = [...mapped, ...current];
-        saveHorariosToLocal(updated);
-        setHorarios(updated);
+      if (supabase) {
+        const { error } = await supabase.from("reservas").delete().eq("id_reserva", contextReservation.id_reserva);
+        if (error) throw error;
       } else {
-        for (const item of deduplicated) {
-          await saveSingleHorario(item);
-        }
-        await loadData();
+        setReservations((current) => current.filter((item) => item.id_reserva !== contextReservation.id_reserva));
       }
 
-      hydrateFormFromExtracted(deduplicated);
-      setSelectedProfessorId("");
-      setMessage(`Se cargaron automáticamente ${deduplicated.length} horarios desde el PDF.`);
-      setParsedHorarios([]);
-      setPdfText("");
+      setNotice(
+        action === "cancelar"
+          ? `Reserva cancelada para ${getTeacherNameFromReservation(contextReservation)}`
+          : `Aula liberada para ${contextReservation.aulas?.nombre_aula ?? "la reserva"}`,
+      );
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "No se pudo guardar el lote de horarios.");
-      console.error(error);
+      setNotice("No se pudo actualizar la reserva. Revisa la conexión con Supabase.");
+      console.warn("Error al aplicar acción del admin:", error);
     } finally {
-      setSaving(false);
+      setContextReservation(null);
+    }
+  };
+
+  const confirmDirectReservation = async () => {
+    if (!draft) return;
+
+    const sessionUserId = Number(localStorage.getItem("session-user-id") ?? 2);
+    const insertPayload = {
+      id_usuario: sessionUserId,
+      id_aula: draft.roomId,
+      fecha_reserva: draft.date,
+      hora_inicio: draft.start,
+      hora_fin: draft.end,
+      motivo: draft.subject.trim() || "Reserva de aula",
+      estado: "Pendiente",
+    };
+
+    try {
+      if (supabase) {
+        if (draft.id_reserva) {
+          const { error } = await supabase.from("reservas").update({
+            id_aula: draft.roomId,
+            fecha_reserva: draft.date,
+            hora_inicio: draft.start,
+            hora_fin: draft.end,
+            motivo: insertPayload.motivo,
+          }).eq("id_reserva", draft.id_reserva);
+          if (error) throw error;
+        } else {
+          const { error } = await supabase.from("reservas").insert(insertPayload);
+          if (error) throw error;
+        }
+      } else {
+        const nextReservation: ReservationItem = {
+          id_reserva: draft.id_reserva ?? Date.now(),
+          id_aula: draft.roomId,
+          id_usuario: sessionUserId,
+          fecha_reserva: draft.date,
+          hora_inicio: draft.start,
+          hora_fin: draft.end,
+          motivo: insertPayload.motivo,
+          estado: "Pendiente",
+          usuarios: { nombre: draft.teacher.split(" ")[0] ?? "Profesor", apellido: draft.teacher.replace(draft.teacher.split(" ")[0] ?? "", "").trim() || "Asignado" },
+          aulas: { nombre_aula: draft.roomName, codigo_aula: draft.roomName },
+        };
+
+        setReservations((current) => {
+          if (draft.id_reserva) {
+            return current.map((item) => item.id_reserva === draft.id_reserva ? nextReservation : item);
+          }
+          return [nextReservation, ...current];
+        });
+      }
+
+      setNotice(`Reserva ${draft.id_reserva ? "actualizada" : "creada"} para ${draft.roomName} · ${draft.start} a ${draft.end}`);
+      setDraft(null);
+    } catch (error) {
+      setNotice("No se pudo guardar la reserva. Revisa la conexión y permisos del proyecto.");
+      console.warn("Error de reserva rápida:", error);
     }
   };
 
@@ -644,156 +329,175 @@ export default function HorariosPage() {
     <main className="page-shell">
       <RoleSidebar />
 
-      <section className="content-panel">
-        <header className="topbar">
-          <div>
-            <p className="eyebrow">Administración</p>
-            <h1>Horarios</h1>
+      <section className="content-panel timeline-viewport">
+        <div className="timeline-breadcrumb">
+          <span className="breadcrumb-leaf">ADMINISTRACIÓN</span>
+          <span className="breadcrumb-separator">/</span>
+          <span className="breadcrumb-current">Horarios</span>
+        </div>
+
+        <header className="timeline-header">
+          <div className="timeline-heading-block">
+            <h1>Línea de tiempo</h1>
+            <p>DISPONIBILIDAD POR AULA</p>
           </div>
-          <button className="primary-button" type="button" onClick={() => setForm(emptyForm)}>
-            Nuevo horario
-          </button>
+
+          <div className="timeline-filters">
+            {dateOptions.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                className={activeDate === option.value ? "filter-pill active" : "filter-pill"}
+                onClick={() => setSelectedDate(option.value)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
         </header>
 
-        <div className="reservas-controls">
-          <div className="search-box">
-            <span>Buscar</span>
-            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Docente, aula o día" />
-          </div>
+        <div className="timeline-chips-row">
+          {hourMarkers.map((marker) => (
+            <span key={marker}>{marker}</span>
+          ))}
         </div>
 
-        <div className="booking-grid">
-          <div className="form-card">
-            <h3>Cargar horario desde PDF</h3>
+        <div className="timeline-board">
+          {rooms.map((room) => {
+            const roomReservations = visibleReservations.filter((item) => Number(item.id_aula) === Number(room.id_aula));
+            const freeSlots = buildFreeSlots(roomReservations);
 
-            <div className="form-grid">
-              <label className="full-width">
-                Archivo PDF
-                <input type="file" accept="application/pdf" onChange={handlePdfUpload} />
-              </label>
-            </div>
-
-            {pdfBusy ? <p className="form-feedback">Procesando archivo PDF...</p> : null}
-
-            {parsedHorarios.length ? (
-              <div className="form-actions" style={{ marginTop: "1rem" }}>
-                <button type="button" className="primary-button" onClick={() => persistParsedHorarios()} disabled={saving}>
-                  {saving ? "Guardando..." : `Guardar ${parsedHorarios.length} horarios detectados`}
-                </button>
-              </div>
-            ) : null}
-
-            {pdfText ? (
-              <div className="table-card" style={{ marginTop: "1rem" }}>
-                <div className="table-header">
-                  <h3>Texto extraído</h3>
+            return (
+              <div key={room.id_aula} className="timeline-row">
+                <div className="timeline-room-label">
+                  <span className="room-title">AULA ESPECIALIZADA</span>
+                  <strong>{room.nombre_aula}</strong>
+                  <small>{room.codigo_aula}</small>
+                  <span className="room-icon">{room.icon}</span>
                 </div>
-                <div style={{ whiteSpace: "pre-wrap", maxHeight: "220px", overflow: "auto", padding: "0.75rem" }}>
-                  {pdfText.slice(0, 1200)}
+
+                <div className="timeline-track" aria-label={`Disponibilidad de ${room.nombre_aula}`}>
+                  {hourMarkers.map((marker) => (
+                    <span
+                      key={`${room.id_aula}-${marker}`}
+                      className="time-marker"
+                      style={{ left: `${((timeToMinutes(marker) - startOfDayMinutes) / totalMinutes) * 100}%` }}
+                    />
+                  ))}
+
+                  {roomReservations.map((reservation) => {
+                    const style = getReservationStyle(reservation.hora_inicio, reservation.hora_fin);
+                    const teacher = getTeacherNameFromReservation(reservation);
+
+                    return (
+                      <button
+                        key={reservation.id_reserva}
+                        type="button"
+                        className="timeline-reservation-pill"
+                        style={{
+                          ...style,
+                          background: reservation.estado === "Pendiente" ? "#dfeef1" : reservation.estado === "Aprobada" ? "#d7f0d2" : "#f5d8d8",
+                        }}
+                        onClick={() => handleOccupiedSlotClick(reservation)}
+                        title={`${teacher} · ${reservation.hora_inicio} - ${reservation.hora_fin}`}
+                      >
+                        <span>{teacher.toUpperCase()}</span>
+                        <small>{reservation.hora_inicio} - {reservation.hora_fin}</small>
+                      </button>
+                    );
+                  })}
+
+                  {freeSlots.map((slot) => {
+                    const left = ((timeToMinutes(slot.start) - startOfDayMinutes) / totalMinutes) * 100;
+                    const width = ((timeToMinutes(slot.end) - timeToMinutes(slot.start)) / totalMinutes) * 100;
+
+                    return (
+                      <button
+                        key={`${room.id_aula}-${slot.start}-${slot.end}`}
+                        type="button"
+                        className="timeline-free-slot"
+                        style={{
+                          left: `${left}%`,
+                          width: `${width}%`,
+                        }}
+                        onClick={() => handleFreeSlotClick(room, slot.start, slot.end)}
+                        aria-label={`Reservar ${room.nombre_aula} entre ${slot.start} y ${slot.end}`}
+                      />
+                    );
+                  })}
                 </div>
               </div>
-            ) : null}
-          </div>
-
-          <form className="form-card" onSubmit={handleSubmit}>
-            <h3>{form.id_horario ? "Editar horario" : "Registrar horario"}</h3>
-
-            <div className="form-grid">
-              <label>
-                Docente
-                <select value={form.id_usuario} onChange={(event) => handleChange("id_usuario", event.target.value)}>
-                  <option value="">Selecciona docente</option>
-                  {usuarios.map((usuario) => (
-                    <option key={usuario.id_usuario} value={usuario.id_usuario}>{getProfessorLabel(usuario)}</option>
-                  ))}
-                </select>
-              </label>
-
-              <label>
-                Aula
-                <select value={form.id_aula} onChange={(event) => handleChange("id_aula", event.target.value)}>
-                  <option value="">Selecciona aula</option>
-                  {aulas.map((aula) => (
-                    <option key={aula.id_aula} value={aula.id_aula}>{aula.nombre_aula}</option>
-                  ))}
-                </select>
-              </label>
-
-              <label>
-                Día
-                <select value={form.dia_semana} onChange={(event) => handleChange("dia_semana", event.target.value)}>
-                  {['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'].map((dia) => (
-                    <option key={dia} value={dia}>{dia}</option>
-                  ))}
-                </select>
-              </label>
-
-              <label>
-                Hora inicio
-                <input type="time" value={form.hora_inicio} onChange={(event) => handleChange("hora_inicio", event.target.value)} />
-              </label>
-
-              <label>
-                Hora fin
-                <input type="time" value={form.hora_fin} onChange={(event) => handleChange("hora_fin", event.target.value)} />
-              </label>
-            </div>
-
-            {message ? <p className="form-feedback">{message}</p> : null}
-
-            <div className="form-actions">
-              <button type="submit" className="primary-button" disabled={saving}>
-                {saving ? "Guardando..." : form.id_horario ? "Actualizar" : "Guardar"}
-              </button>
-              <button type="button" className="secondary-button" onClick={() => setForm(emptyForm)}>
-                Limpiar
-              </button>
-            </div>
-          </form>
-
-          <div className="table-card">
-            <div className="table-header">
-              <h3>Horarios por profesor</h3>
-              <select value={selectedProfessorId} onChange={(event) => setSelectedProfessorId(event.target.value)}>
-                <option value="">Todos los docentes</option>
-                {usuarios.map((usuario) => (
-                  <option key={usuario.id_usuario} value={usuario.id_usuario}>{getProfessorLabel(usuario)}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Docente</th>
-                    <th>Aula</th>
-                    <th>Día</th>
-                    <th>Horario</th>
-                    <th>Acción</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(selectedProfessorId ? teacherSchedule : filtered).map((horario) => (
-                    <tr key={horario.id_horario}>
-                      <td>{getProfessorLabel(usuarios.find((usuario) => Number(usuario.id_usuario) === Number(horario.id_usuario)) ?? horario.usuarios)}</td>
-                      <td>{horario.aulas?.nombre_aula ?? "Sin aula"}</td>
-                      <td>{horario.dia_semana}</td>
-                      <td>{horario.hora_inicio} - {horario.hora_fin}</td>
-                      <td>
-                        <div className="inline-actions">
-                          <button type="button" className="ghost-button" onClick={() => handleEdit(horario)}>Editar</button>
-                          <button type="button" className="ghost-button danger" onClick={() => handleDelete(horario.id_horario)}>Eliminar</button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+            );
+          })}
         </div>
+
+        {notice ? (
+          <div className="timeline-notice" role="status">
+            {notice}
+          </div>
+        ) : null}
       </section>
+
+      {draft ? (
+        <div className="timeline-modal-backdrop" onClick={() => setDraft(null)}>
+          <div className="timeline-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="timeline-modal-header">
+              <div>
+                <p>Reserva rápida</p>
+                <h3>{draft.roomName}</h3>
+              </div>
+              <button type="button" className="timeline-close" onClick={() => setDraft(null)}>
+                ×
+              </button>
+            </div>
+
+            <div className="timeline-summary-grid">
+              <div>
+                <span>Fecha</span>
+                <strong>{draft.date}</strong>
+              </div>
+              <div>
+                <span>Bloque</span>
+                <strong>{draft.start} - {draft.end}</strong>
+              </div>
+            </div>
+
+            <label className="timeline-form-field">
+              Docente
+              <input
+                value={draft.teacher}
+                onChange={(event) => setDraft((current) => (current ? { ...current, teacher: event.target.value } : current))}
+              />
+            </label>
+
+            <label className="timeline-form-field">
+              Materia / motivo
+              <textarea
+                rows={3}
+                value={draft.subject}
+                onChange={(event) => setDraft((current) => (current ? { ...current, subject: event.target.value } : current))}
+              />
+            </label>
+
+            <div className="timeline-modal-actions">
+              <button type="button" className="secondary-button" onClick={() => setDraft(null)}>
+                Cancelar
+              </button>
+              <button type="button" className="primary-button" onClick={() => void confirmDirectReservation()}>
+                {isAdmin ? "Forzar reserva" : "Confirmar reserva"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {contextReservation && isAdmin ? (
+        <div className="timeline-context-menu" role="menu" aria-label="Acciones rápidas del administrador">
+          <button type="button" onClick={() => void applyAdminAction("cancelar")}>Cancelar Reserva</button>
+          <button type="button" onClick={() => void applyAdminAction("liberar")}>Liberar Aula</button>
+          <button type="button" onClick={() => void applyAdminAction("editar")}>Editar Asignación</button>
+        </div>
+      ) : null}
     </main>
   );
 }

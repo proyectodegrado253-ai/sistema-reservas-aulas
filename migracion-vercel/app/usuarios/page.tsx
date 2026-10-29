@@ -1,5 +1,6 @@
 "use client";
 
+import ActionMenu from "@/components/action-menu";
 import RoleSidebar from "@/components/role-sidebar";
 import { isAdminSession } from "@/lib/auth";
 import { useRouter } from "next/navigation";
@@ -60,12 +61,9 @@ export default function UsuariosPage() {
     const savedRoles = JSON.parse(localStorage.getItem("cache-roles") ?? "null") as Array<{ id_rol: number; nombre_rol: string }> | null;
 
     if (!supabase) {
-      const finalRoles = savedRoles?.length ? savedRoles : [{ id_rol: 1, nombre_rol: "Superadministrador" }, { id_rol: 2, nombre_rol: "Profesor" }];
-      const finalUsuarios = savedUsuarios?.length ? savedUsuarios : fallbackUsuarios;
-      localStorage.setItem("cache-roles", JSON.stringify(finalRoles));
-      localStorage.setItem("cache-usuarios", JSON.stringify(finalUsuarios));
-      setRoles(finalRoles);
-      setUsuarios(finalUsuarios);
+      setRoles([]);
+      setUsuarios([]);
+      setMessage("Supabase no está configurado. No se pueden cargar usuarios reales sin NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY.");
       return;
     }
 
@@ -81,20 +79,17 @@ export default function UsuariosPage() {
 
       const nextRoles = (rolesResult.data as Array<{ id_rol: number; nombre_rol: string }> | null)?.length
         ? (rolesResult.data as Array<{ id_rol: number; nombre_rol: string }>)
-        : [{ id_rol: 1, nombre_rol: "Superadministrador" }, { id_rol: 2, nombre_rol: "Profesor" }];
-      const nextUsuarios = (usuariosResult.data as UsuarioRecord[] | null)?.length ? (usuariosResult.data as UsuarioRecord[]) : fallbackUsuarios;
+        : [];
+      const nextUsuarios = (usuariosResult.data as UsuarioRecord[] | null)?.length ? (usuariosResult.data as UsuarioRecord[]) : [];
 
       localStorage.setItem("cache-roles", JSON.stringify(nextRoles));
       localStorage.setItem("cache-usuarios", JSON.stringify(nextUsuarios));
       setRoles(nextRoles);
       setUsuarios(nextUsuarios);
     } catch (error) {
-      const fallbackRoles = savedRoles?.length ? savedRoles : [{ id_rol: 1, nombre_rol: "Superadministrador" }, { id_rol: 2, nombre_rol: "Profesor" }];
-      const fallbackData = savedUsuarios?.length ? savedUsuarios : fallbackUsuarios;
-      localStorage.setItem("cache-roles", JSON.stringify(fallbackRoles));
-      localStorage.setItem("cache-usuarios", JSON.stringify(fallbackData));
-      setRoles(fallbackRoles);
-      setUsuarios(fallbackData);
+      setRoles([]);
+      setUsuarios([]);
+      setMessage("No se pudo cargar la información de usuarios desde Supabase. Revisa la conexión y la base de datos.");
       console.warn("Fallo en Supabase para usuarios.", error);
     }
   };
@@ -337,10 +332,12 @@ export default function UsuariosPage() {
                       <td>{usuario.roles?.nombre_rol ?? (usuario.id_rol === 1 ? "Superadministrador" : "Profesor")}</td>
                       <td><span className={`status ${usuario.estado === "Activo" ? "aprobada" : "pendiente"}`}>{usuario.estado}</span></td>
                       <td>
-                        <div className="inline-actions">
-                          <button type="button" className="ghost-button" onClick={() => handleEdit(usuario)}>Editar</button>
-                          <button type="button" className="ghost-button danger" onClick={() => handleDeleteUsuario(usuario.id_usuario)}>Eliminar</button>
-                        </div>
+                        <ActionMenu
+                          items={[
+                            { label: "Editar", onClick: () => handleEdit(usuario) },
+                            { label: "Eliminar", variant: "danger", onClick: () => handleDeleteUsuario(usuario.id_usuario) },
+                          ]}
+                        />
                       </td>
                     </tr>
                   ))}

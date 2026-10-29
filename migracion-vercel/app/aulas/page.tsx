@@ -1,5 +1,6 @@
 "use client";
 
+import ActionMenu from "@/components/action-menu";
 import RoleSidebar from "@/components/role-sidebar";
 import { isAdminSession } from "@/lib/auth";
 import { useRouter } from "next/navigation";
@@ -55,8 +56,8 @@ export default function AulasPage() {
     const savedAulas = JSON.parse(localStorage.getItem("cache-aulas") ?? "null") as AulaRecord[] | null;
 
     if (!supabase) {
-      setMessage("No se pudo conectar con Supabase. Revisa la configuración de la base de datos.");
-      setAulas(savedAulas?.length ? savedAulas : []);
+      setMessage("Supabase no está configurado. Debes definir NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY antes de cargar aulas reales.");
+      setAulas([]);
       return;
     }
 
@@ -69,9 +70,7 @@ export default function AulasPage() {
       setAulas(nextAulas);
       setMessage("");
     } catch (error) {
-      const fallbackData = savedAulas?.length ? savedAulas : [];
-      localStorage.setItem("cache-aulas", JSON.stringify(fallbackData));
-      setAulas(fallbackData);
+      setAulas([]);
       setMessage("No se pudo conectar con Supabase. Revisa la configuración de la base de datos.");
       console.warn("Fallo en Supabase para aulas.", error);
     }
@@ -126,16 +125,14 @@ export default function AulasPage() {
       }
 
       if (form.id_aula) {
-        if (form.id_aula) {
-          const { error } = await supabase.from("aulas").update(payload).eq("id_aula", form.id_aula);
-          if (error) throw error;
-        } else {
-          const { error } = await supabase.from("aulas").insert(payload);
-          if (error) throw error;
-        }
-        await loadData();
+        const { error } = await supabase.from("aulas").update(payload).eq("id_aula", form.id_aula);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("aulas").insert(payload);
+        if (error) throw error;
       }
 
+      await loadData();
       setMessage(form.id_aula ? "Aula actualizada correctamente." : "Aula registrada correctamente.");
       setForm(emptyForm);
     } catch (error) {
@@ -274,7 +271,13 @@ export default function AulasPage() {
                       <td>{aula.nombre_aula}</td>
                       <td>{aula.capacidad}</td>
                       <td><span className={`status ${aula.estado.toLowerCase() === "activo" ? "aprobada" : aula.estado.toLowerCase() === "mantenimiento" ? "pendiente" : "aprobada"}`}>{aula.estado}</span></td>
-                      <td><button type="button" className="ghost-button" onClick={() => handleEdit(aula)}>Editar</button></td>
+                      <td>
+                        <ActionMenu
+                          items={[
+                            { label: "Editar", onClick: () => handleEdit(aula) },
+                          ]}
+                        />
+                      </td>
                     </tr>
                   ))}
                 </tbody>

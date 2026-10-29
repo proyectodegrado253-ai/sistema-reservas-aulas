@@ -1,6 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateAcademicReservation } from './academic-rules.js';
+import { buildHourSlots, isRangeOccupiedByReservation, validateAcademicReservation } from './academic-rules.js';
+
+test('genera franjas horarias de 1 hora', () => {
+  const slots = buildHourSlots({ startHour: 6, endHour: 10, stepMinutes: 60 });
+
+  assert.equal(slots.length, 4);
+  assert.deepEqual(slots[0], { start: '06:00', end: '07:00', label: '06:00 - 07:00' });
+  assert.deepEqual(slots[3], { start: '09:00', end: '10:00', label: '09:00 - 10:00' });
+});
+
+test('marca como ocupado si solapa con una reserva existente', () => {
+  const reservation = { hora_inicio: '09:00', hora_fin: '11:00' };
+
+  assert.equal(isRangeOccupiedByReservation({ reservation, start: '09:30', end: '10:00' }), true);
+  assert.equal(isRangeOccupiedByReservation({ reservation, start: '11:00', end: '12:00' }), false);
+});
 
 test('detecta conflicto por docente', () => {
   const result = validateAcademicReservation({

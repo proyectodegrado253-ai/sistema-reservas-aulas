@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { buildFullName, DEFAULT_AVATAR, resolveAvatarUrl } from "@/lib/profile-utils";
 
 const adminMenu = [
   { label: "Home", href: "/admin" },
@@ -26,30 +27,34 @@ export default function RoleSidebar() {
   const router = useRouter();
   const [role, setRole] = useState("Profesor");
   const [displayName, setDisplayName] = useState("Profesor");
+  const [avatar, setAvatar] = useState(DEFAULT_AVATAR);
   const [menuOpen, setMenuOpen] = useState(true);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
-  useEffect(() => {
+  const syncSessionState = () => {
     const storedRole = window.localStorage.getItem("session-role") ?? "Profesor";
     const storedName = window.localStorage.getItem("session-name");
     const storedUserId = Number(window.localStorage.getItem("session-user-id") ?? 0);
+    const storedAvatar = window.localStorage.getItem("session-avatar") ?? "";
     const storedUsers = JSON.parse(window.localStorage.getItem("cache-usuarios") ?? "[]") as Array<Record<string, any>>;
 
     setRole(storedRole);
 
-    if (storedName) {
-      setDisplayName(storedName);
-      return;
-    }
-
     const matchedUser = storedUsers.find((user) => Number(user.id_usuario) === storedUserId);
-    if (matchedUser) {
-      const nextName = `${matchedUser.nombre ?? ""} ${matchedUser.apellido ?? ""}`.trim();
-      setDisplayName(nextName || "Profesor");
-      return;
-    }
+    const nextName = storedName || (matchedUser ? buildFullName(matchedUser) : storedRole === "Superadministrador" ? "Admin" : "Profesor");
+    const nextAvatar = storedAvatar || matchedUser?.avatar || DEFAULT_AVATAR;
 
-    setDisplayName(storedRole === "Superadministrador" ? "Admin" : "Profesor");
+    setDisplayName(nextName);
+    setAvatar(resolveAvatarUrl(nextAvatar));
+  };
+
+  useEffect(() => {
+    syncSessionState();
+    window.addEventListener("session-updated", syncSessionState);
+
+    return () => {
+      window.removeEventListener("session-updated", syncSessionState);
+    };
   }, []);
 
   const isAdmin = role === "Superadministrador";
@@ -63,6 +68,8 @@ export default function RoleSidebar() {
     localStorage.removeItem("session-role");
     localStorage.removeItem("session-email");
     localStorage.removeItem("session-user-id");
+    localStorage.removeItem("session-name");
+    localStorage.removeItem("session-avatar");
     setShowLogoutModal(false);
     router.push("/login");
   };
@@ -72,7 +79,7 @@ export default function RoleSidebar() {
       <aside className={`role-sidebar ${isAdmin ? "admin" : "profesor"} ${menuOpen ? "menu-open" : "menu-closed"}`}>
         <div className="sidebar-header">
           <div className="brand-box">
-            <img src="/logo-institucion.png" alt="Logo institucional" className="institutional-logo" />
+            <img src={avatar} alt="Avatar del usuario" className="institutional-logo" onError={(event) => { event.currentTarget.src = DEFAULT_AVATAR; }} />
             <div className="brand-box-copy">
               <strong>{isAdmin ? "Admin" : displayName}</strong>
               <small>{isAdmin ? "Coordinación" : "Docente"}</small>
