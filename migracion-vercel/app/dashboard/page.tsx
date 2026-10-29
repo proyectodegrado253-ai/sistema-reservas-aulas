@@ -42,6 +42,34 @@ function PanelSkeleton() {
   );
 }
 
+function getReservationCountdown(alertReservation: { aula: string; fecha: string; inicio: string; fin: string } | null, now = new Date()) {
+  if (!alertReservation) {
+    return "Sin clase programada";
+  }
+
+  const startAt = new Date(`${alertReservation.fecha}T${alertReservation.inicio}:00`);
+  const endAt = new Date(`${alertReservation.fecha}T${alertReservation.fin}:00`);
+  const diffMinutes = Math.round((startAt.getTime() - now.getTime()) / 60000);
+
+  if (now >= startAt && now <= endAt) {
+    return "RESERVA EN CURSO";
+  }
+
+  if (diffMinutes > 0) {
+    if (diffMinutes <= 60) {
+      return `Comienza en ${diffMinutes} min`;
+    }
+
+    return `Inicia a las ${alertReservation.inicio}`;
+  }
+
+  if (now > endAt) {
+    return "Clase finalizada";
+  }
+
+  return "Sin clase programada";
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const [role, setRole] = useState("");
@@ -51,6 +79,7 @@ export default function DashboardPage() {
   const [stats, setStats] = useState({ aulasActivas: 0, reservasEsteMes: 0, aprobadas: 0, pendientes: 0, proximaAula: "Sin reserva"});
   const [recentActivities, setRecentActivities] = useState<Array<{ title: string; time: string }>>([]);
   const [alertReservation, setAlertReservation] = useState<{ aula: string; fecha: string; inicio: string; fin: string } | null>(null);
+  const [currentTime, setCurrentTime] = useState<Date | null>(null);
   const [timelineDate, setTimelineDate] = useState<string>("");
   const [timelineAulas, setTimelineAulas] = useState<Array<{ id_aula: number; nombre_aula: string; codigo_aula?: string; estado?: string }>>([]);
   const [timelineReservations, setTimelineReservations] = useState<DashboardReservation[]>([]);
@@ -59,7 +88,7 @@ export default function DashboardPage() {
   const [timelineMessage, setTimelineMessage] = useState<string>("");
   const [savingTimeline, setSavingTimeline] = useState(false);
 
-  const timelineSlots = useMemo(() => buildHourSlots({ startHour: 6, endHour: 22, stepMinutes: 60 }), []);
+  const timelineSlots = useMemo(() => buildHourSlots({ startHour: 7, endHour: 18, stepMinutes: 60 }), []);
 
   const loadDashboardData = async () => {
     const client = supabase;
@@ -168,6 +197,14 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
+    const tick = window.setInterval(() => {
+      setCurrentTime(new Date());
+    }, 30000);
+
+    return () => window.clearInterval(tick);
+  }, []);
+
+  useEffect(() => {
     const today = new Date();
     const todayIso = today.toISOString().slice(0, 10);
     setTimelineDate(todayIso);
@@ -214,6 +251,13 @@ export default function DashboardPage() {
   }, [router]);
 
   const activityList = useMemo(() => recentActivities, [recentActivities]);
+  const countdownText = useMemo(() => {
+    if (!currentTime) {
+      return "Cargando estado de la clase...";
+    }
+
+    return getReservationCountdown(alertReservation, currentTime);
+  }, [alertReservation, currentTime]);
 
   const timelineGrid = useMemo(() => {
     return timelineAulas.map((aula) => ({
@@ -369,7 +413,7 @@ export default function DashboardPage() {
           <>
             <div className="stats-grid compact-stats-grid">
               <article className="stat-card compact-stat-card">
-                <p>Total del mes</p>
+                <p>Total reservas</p>
                 <strong>{stats.reservasEsteMes}</strong>
               </article>
               <article className="stat-card compact-stat-card">
@@ -381,7 +425,7 @@ export default function DashboardPage() {
                 <strong>{stats.pendientes}</strong>
               </article>
               <article className="stat-card compact-stat-card accent">
-                <p>Próxima aula</p>
+                <p>Próxima clase</p>
                 <strong>{stats.proximaAula}</strong>
               </article>
             </div>
@@ -404,14 +448,112 @@ export default function DashboardPage() {
                 </span>
               </div>
 
+              <div className="dashboard-alert-countdown" aria-live="polite">
+                {countdownText}
+              </div>
+
               <div className="dashboard-alert-actions">
                 <a href="/reservas" className="primary-button compact-link">Ver reservas</a>
                 <a href="/perfil" className="secondary-button compact-link">Perfil</a>
               </div>
             </section>
+
+            <section className="dashboard-agenda-card">
+              <div className="dashboard-agenda-header">
+                <div>
+                  <p className="eyebrow">Agenda</p>
+                  <h3>Mi agenda para hoy</h3>
+                </div>
+                <span>
+                  {timelineDate
+                    ? new Date(`${timelineDate}T00:00:00`).toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "short" })
+                    : "Hoy"}
+                </span>
+              </div>
+
+              <div className="dashboard-agenda-list">
+                {timelineGrid.map((aula) => {
+                  const freeCount = aula.slots.filter((slot) => !slot.occupied).length;
+
+                  return (
+                    <div key={aula.id_aula} className="agenda-room-card">
+                      <div className="agenda-room-head">
+                        <div>
+                          <span className="agenda-room-code">{aula.codigo_aula ?? "AULA"}</span>
+                          <strong>{aula.nombre_aula}</strong>
+                        </div>
+                        <span className="agenda-room-free">{freeCount} libres</span>
+                      </div>
+
+                      <div className="agenda-track" aria-label={`Agenda de ${aula.nombre_aula}`}>
+                        {aula.slots.map((slot) => (
+                          <button
+                            key={`${aula.id_aula}-${slot.start}`}
+                            type="button"
+                            className={slot.occupied ? "agenda-slot occupied" : "agenda-slot free"}
+                            onClick={() => !slot.occupied && openTimelineSlot(aula.id_aula, { start: slot.start, end: slot.end })}
+                            title={slot.occupied ? `${aula.nombre_aula} ocupada ${slot.start} - ${slot.end}` : `Reservar ${aula.nombre_aula} ${slot.start} - ${slot.end}`}
+                          >
+                            <span>{slot.occupied ? "Ocupado" : slot.start}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+
+            {timelineMessage ? <div className="dashboard-inline-message">{timelineMessage}</div> : null}
           </>
         )}
       </section>
+
+      {timelineDraft ? (
+        <div className="timeline-modal-backdrop" onClick={() => setTimelineDraft(null)}>
+          <div className="timeline-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="timeline-modal-header">
+              <div>
+                <p>Reserva rápida</p>
+                <h3>{timelineAulas.find((aula) => aula.id_aula === timelineDraft.id_aula)?.nombre_aula ?? "Aula"}</h3>
+              </div>
+              <button type="button" className="timeline-close" onClick={() => setTimelineDraft(null)}>×</button>
+            </div>
+
+            <div className="timeline-summary-grid">
+              <div>
+                <span>Fecha</span>
+                <strong>{timelineDraft.fecha}</strong>
+              </div>
+              <div>
+                <span>Hora</span>
+                <strong>{timelineDraft.hora_inicio} - {timelineDraft.hora_fin}</strong>
+              </div>
+            </div>
+
+            <label className="timeline-form-field">
+              Motivo / materia
+              <textarea
+                value={timelineDraft.motivo}
+                onChange={(event) => setTimelineDraft((current) => current ? { ...current, motivo: event.target.value } : current)}
+                rows={3}
+                placeholder="Ej. Clase, laboratorio, tutoría..."
+              />
+            </label>
+
+            {timelineMessage ? <div className="timeline-message compact">{timelineMessage}</div> : null}
+
+            <div className="timeline-modal-actions">
+              <button type="button" className="secondary-button" onClick={() => setTimelineDraft(null)}>
+                Cancelar
+              </button>
+              <button type="button" className="primary-button" onClick={submitTimelineReservation} disabled={savingTimeline}>
+                {savingTimeline ? "Guardando..." : "Confirmar reserva"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }
