@@ -2647,9 +2647,9 @@ body {
 
 .timeline-grid {
   display: grid;
-  grid-template-columns: 190px repeat(11, minmax(56px, 1fr));
+  grid-template-columns: minmax(120px, 180px) repeat(11, minmax(44px, 1fr));
   gap: 0.38rem;
-  min-width: 860px;
+  min-width: 760px;
 }
 
 .timeline-grid-corner {
@@ -2703,17 +2703,73 @@ body {
   font-size: 0.9rem;
   letter-spacing: -0.04em;
   line-height: 1.2;
+  word-break: break-word;
 }
 
 .timeline-room-track {
   display: grid;
-  grid-template-columns: repeat(11, minmax(56px, 1fr));
+  grid-template-columns: repeat(11, minmax(44px, 1fr));
   gap: 0.34rem;
   min-height: 68px;
   padding: 0.22rem 0.1rem;
   border: 1px solid rgba(148, 163, 184, 0.14);
   border-radius: 12px;
   background: rgba(241, 245, 249, 0.84);
+}
+
+@media (max-width: 900px) {
+  .timeline-grid {
+    min-width: 680px;
+  }
+
+  .timeline-room-meta {
+    min-height: 60px;
+    padding: 0.45rem 0.55rem;
+  }
+
+  .timeline-room-meta strong {
+    font-size: 0.8rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .dashboard-agenda-card {
+    padding: 0.7rem 0.7rem 0.8rem;
+  }
+
+  .timeline-shell {
+    overflow-x: auto;
+  }
+
+  .timeline-grid {
+    grid-template-columns: 1fr;
+    min-width: 0;
+  }
+
+  .timeline-grid-corner {
+    display: none;
+  }
+
+  .timeline-hour-label {
+    display: none;
+  }
+
+  .timeline-room-meta {
+    min-height: auto;
+    width: 100%;
+    padding: 0.7rem 0.75rem;
+    border-radius: 10px;
+  }
+
+  .timeline-room-track {
+    grid-template-columns: repeat(11, minmax(36px, 1fr));
+    min-height: 54px;
+    padding: 0.2rem;
+  }
+
+  .timeline-band {
+    min-height: 46px;
+  }
 }
 
 .timeline-band {
