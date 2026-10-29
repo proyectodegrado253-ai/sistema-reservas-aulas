@@ -48,8 +48,9 @@ export default function DashboardPage() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [stats, setStats] = useState({ aulasActivas: 0, reservasEsteMes: 0, disponiblesHoy: 0 });
+  const [stats, setStats] = useState({ aulasActivas: 0, reservasEsteMes: 0, aprobadas: 0, pendientes: 0, proximaAula: "Sin reserva"});
   const [recentActivities, setRecentActivities] = useState<Array<{ title: string; time: string }>>([]);
+  const [alertReservation, setAlertReservation] = useState<{ aula: string; fecha: string; inicio: string; fin: string } | null>(null);
   const [timelineDate, setTimelineDate] = useState<string>("");
   const [timelineAulas, setTimelineAulas] = useState<Array<{ id_aula: number; nombre_aula: string; codigo_aula?: string; estado?: string }>>([]);
   const [timelineReservations, setTimelineReservations] = useState<DashboardReservation[]>([]);
@@ -64,7 +65,7 @@ export default function DashboardPage() {
     const client = supabase;
 
     if (!client) {
-      setStats({ aulasActivas: 0, reservasEsteMes: 0, disponiblesHoy: 0 });
+      setStats({ aulasActivas: 0, reservasEsteMes: 0, aprobadas: 0, pendientes: 0, proximaAula: "Sin reserva" });
       setRecentActivities([]);
       setLoading(false);
       setError("La base de datos no está configurada para mostrar información del dashboard.");
@@ -114,14 +115,20 @@ export default function DashboardPage() {
       const today = new Date();
       const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
       const reservas = reservasResult.data ?? [];
-      const reservasEsteMes = reservas.filter((reserva) => {
+      const currentUserId = Number(localStorage.getItem("session-user-id") ?? 0);
+      const reservasProfesor = reservas.filter((reserva) => Number(reserva.id_usuario) === Number(currentUserId));
+      const reservasEsteMes = reservasProfesor.filter((reserva) => {
         const fecha = new Date(reserva.fecha_reserva);
         return !Number.isNaN(fecha.getTime()) && fecha >= monthStart && fecha <= today;
       }).length;
+      const aprobadas = reservasProfesor.filter((reserva) => (reserva.estado ?? "").toLowerCase() === "aprobada").length;
+      const pendientes = reservasProfesor.filter((reserva) => (reserva.estado ?? "").toLowerCase() === "pendiente").length;
+      const nextReservation = [...reservasProfesor]
+        .sort((a, b) => `${a.fecha_reserva}T${a.hora_inicio}`.localeCompare(`${b.fecha_reserva}T${b.hora_inicio}`))[0];
 
       const disponiblesHoy = (aulasResult.data ?? []).filter((aula) => aula.estado === "Activo").length;
 
-      const latestActivities = (reservas.slice(0, 4) ?? []).map((reserva) => ({
+      const latestActivities = (reservasProfesor.slice(0, 4) ?? []).map((reserva) => ({
         title: `Reserva ${reserva.estado ?? "Pendiente"}`,
         time: reserva.fecha_reserva ?? "Sin fecha",
       }));
@@ -140,8 +147,16 @@ export default function DashboardPage() {
       setStats({
         aulasActivas: (aulasResult.data ?? []).filter((aula) => aula.estado === "Activo" || !aula.estado).length,
         reservasEsteMes,
-        disponiblesHoy,
+        aprobadas,
+        pendientes,
+        proximaAula: nextReservation?.aulas?.nombre_aula ?? "Sin reserva",
       });
+      setAlertReservation(nextReservation ? {
+        aula: nextReservation.aulas?.nombre_aula ?? "Aula asignada",
+        fecha: nextReservation.fecha_reserva,
+        inicio: nextReservation.hora_inicio,
+        fin: nextReservation.hora_fin,
+      } : null);
       setRecentActivities(latestActivities.length ? latestActivities : [{ title: "Sin actividades recientes", time: "Pendiente" }]);
       setError(null);
     } catch (loadError) {
@@ -353,216 +368,50 @@ export default function DashboardPage() {
         ) : (
           <>
             <div className="stats-grid compact-stats-grid">
-              <article className="stat-card accent compact-stat-card">
-                <p>Aulas activas</p>
-                <strong>{stats.aulasActivas}</strong>
+              <article className="stat-card compact-stat-card">
+                <p>Total del mes</p>
+                <strong>{stats.reservasEsteMes}</strong>
               </article>
               <article className="stat-card compact-stat-card">
-                <p>Reservas este mes</p>
-                <strong>{String(stats.reservasEsteMes).padStart(2, "0")}</strong>
+                <p>Aprobadas</p>
+                <strong>{stats.aprobadas}</strong>
               </article>
               <article className="stat-card compact-stat-card">
-                <p>Disponibles hoy</p>
-                <strong>{String(stats.disponiblesHoy).padStart(2, "0")}</strong>
+                <p>Pendientes</p>
+                <strong>{stats.pendientes}</strong>
+              </article>
+              <article className="stat-card compact-stat-card accent">
+                <p>Próxima aula</p>
+                <strong>{stats.proximaAula}</strong>
               </article>
             </div>
 
-            <section className="room-assignment-panel">
-              <div className="room-assignment-header">
+            <section className="dashboard-alert-card">
+              <div className="dashboard-alert-header">
+                <span className="dashboard-alert-badge">Recordatorio</span>
+                <span className="dashboard-alert-date">{alertReservation ? alertReservation.fecha : "Sin reserva"}</span>
+              </div>
+
+              <div className="dashboard-alert-body">
                 <div>
-                  <p className="eyebrow">Aulas especializadas</p>
-                  <h3>Asignación institucional</h3>
+                  <p>Tu reserva del día</p>
+                  <strong>{alertReservation ? alertReservation.aula : "Sin reserva programada"}</strong>
                 </div>
-                <span>{timelineAulas.length} aulas activas</span>
+                <span>
+                  {alertReservation
+                    ? `${alertReservation.inicio} - ${alertReservation.fin}`
+                    : "No tienes ninguna reserva activa para hoy."}
+                </span>
               </div>
 
-              <div className="room-assignment-grid">
-                {roomCards.map((aula) => (
-                  <button
-                    key={aula.id_aula}
-                    type="button"
-                    className={aula.available ? "room-card available" : "room-card occupied"}
-                    onClick={() => openReservationFromCard(aula.id_aula)}
-                  >
-                    <div className="room-card-top">
-                      <div>
-                        <span className="room-code">{aula.codigo_aula ?? "AULA"}</span>
-                        <strong>{aula.nombre_aula}</strong>
-                      </div>
-                      <span className={aula.available ? "room-status available" : "room-status occupied"}>
-                        {aula.available ? "Libre" : "Ocupada"}
-                      </span>
-                    </div>
-
-                    <div className="room-card-body">
-                      <div className="room-teacher-block">
-                        <span>Docente asignado</span>
-                        <strong>{aula.assignment?.docente ?? "Sin asignación"}</strong>
-                        <small>{aula.assignment?.area ?? "Área institucional"}</small>
-                      </div>
-
-                      <div className="room-meta-row">
-                        <span>{aula.assignment?.dia ?? "Agenda"}</span>
-                        <strong>{aula.assignment?.horario ?? (aula.nextFreeSlot ? `Libre ${aula.nextFreeSlot.start}` : "Sin horario")}</strong>
-                      </div>
-                    </div>
-
-                    <div className="room-card-footer">
-                      <small>{aula.available ? "Reservar en la franja disponible" : "Ver disponibilidad"}</small>
-                      <span>{aula.available ? "Reservar" : "Revisar"}</span>
-                    </div>
-                  </button>
-                ))}
+              <div className="dashboard-alert-actions">
+                <a href="/reservas" className="primary-button compact-link">Ver reservas</a>
+                <a href="/perfil" className="secondary-button compact-link">Perfil</a>
               </div>
             </section>
-
-            <section className="timeline-panel">
-              <div className="timeline-toolbar">
-                <div className="timeline-heading-wrap">
-                  <h3>Línea de tiempo</h3>
-                  <span>Disponibilidad por aula</span>
-                </div>
-                <div className="timeline-date-actions">
-                  {[0, 1, 2].map((offset) => {
-                    const date = new Date();
-                    date.setDate(date.getDate() + offset);
-                    const iso = date.toISOString().slice(0, 10);
-                    const label = offset === 0 ? "Hoy" : offset === 1 ? "Mañana" : date.toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short" });
-
-                    return (
-                      <button
-                        key={iso}
-                        type="button"
-                        className={timelineDate === iso ? "timeline-date active" : "timeline-date"}
-                        onClick={() => setTimelineDate(iso)}
-                      >
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="timeline-scroll">
-                <div
-                  className="timeline-grid"
-                  style={{ gridTemplateColumns: `minmax(170px, 210px) repeat(${timelineSlots.length}, minmax(86px, 1fr))` }}
-                >
-                  <div className="timeline-header-cell timeline-top-left">Aula</div>
-                  {timelineSlots.map((slot) => (
-                    <div key={slot.label} className="timeline-header-cell">
-                      {slot.start}
-                    </div>
-                  ))}
-
-                  {timelineGrid.map((aula) => (
-                    <Fragment key={aula.id_aula}>
-                      <div className="timeline-aula-label">
-                        <strong>{aula.nombre_aula}</strong>
-                        <small>{aula.codigo_aula ?? "Aula"}</small>
-                      </div>
-                      {aula.slots.map((slot) => (
-                        <button
-                          key={`${aula.id_aula}-${slot.start}`}
-                          type="button"
-                          className={slot.occupied ? "timeline-cell occupied" : "timeline-cell available"}
-                          onClick={() => !slot.occupied && openTimelineSlot(aula.id_aula, { start: slot.start, end: slot.end })}
-                          disabled={slot.occupied}
-                          title={slot.occupied ? `${aula.nombre_aula} ocupada ${slot.start}-${slot.end}` : `Reservar ${aula.nombre_aula} ${slot.start}-${slot.end}`}
-                        >
-                          {slot.occupied ? "Ocupado" : "Libre"}
-                        </button>
-                      ))}
-                    </Fragment>
-                  ))}
-                </div>
-              </div>
-
-              {timelineMessage ? <div className="timeline-message">{timelineMessage}</div> : null}
-            </section>
-
-            <div className="dashboard-layout compact-dashboard-layout">
-              <article className="info-card dashboard-section compact-info-card">
-                <div className="section-header">
-                  <h3>Próximas reservas</h3>
-                  <span>Agenda</span>
-                </div>
-                <ul className="list">
-                  {activityList.length ? activityList.map((activity) => (
-                    <li key={`${activity.title}-${activity.time}`}>{activity.title} — {activity.time}</li>
-                  )) : <li>Sin reservas registradas.</li>}
-                </ul>
-              </article>
-
-              <article className="info-card dashboard-section activity-card compact-info-card">
-                <div className="section-header">
-                  <h3>Registro de actividades</h3>
-                  <span>Reciente</span>
-                </div>
-                <ul className="activity-list">
-                  {activityList.map((activity) => (
-                    <li key={`${activity.title}-${activity.time}`}>
-                      <span className="activity-dot" />
-                      <div>
-                        <strong>{activity.title}</strong>
-                        <small>{activity.time}</small>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </article>
-            </div>
           </>
         )}
       </section>
-
-      {timelineDraft ? (
-        <div className="timeline-modal-backdrop" onClick={() => setTimelineDraft(null)}>
-          <div className="timeline-modal" onClick={(event) => event.stopPropagation()}>
-            <div className="timeline-modal-header">
-              <div>
-                <p>Reserva rápida</p>
-                <h3>{timelineAulas.find((aula) => aula.id_aula === timelineDraft.id_aula)?.nombre_aula ?? "Aula"}</h3>
-              </div>
-              <button type="button" className="timeline-close" onClick={() => setTimelineDraft(null)}>×</button>
-            </div>
-
-            <div className="timeline-modal-body">
-              <div className="timeline-summary-grid">
-                <div>
-                  <span>Fecha</span>
-                  <strong>{timelineDraft.fecha}</strong>
-                </div>
-                <div>
-                  <span>Hora</span>
-                  <strong>{timelineDraft.hora_inicio} - {timelineDraft.hora_fin}</strong>
-                </div>
-              </div>
-
-              <label className="timeline-form-field">
-                Motivo / materia
-                <textarea
-                  value={timelineDraft.motivo}
-                  onChange={(event) => setTimelineDraft((current) => current ? { ...current, motivo: event.target.value } : current)}
-                  rows={3}
-                  placeholder="Ej. Clase de programación, lab, tutoría..."
-                />
-              </label>
-            </div>
-
-            {timelineMessage ? <div className="timeline-message compact">{timelineMessage}</div> : null}
-
-            <div className="timeline-modal-actions">
-              <button type="button" className="secondary-button" onClick={() => setTimelineDraft(null)}>
-                Cancelar
-              </button>
-              <button type="button" className="primary-button" onClick={submitTimelineReservation} disabled={savingTimeline}>
-                {savingTimeline ? "Guardando..." : "Confirmar reserva"}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </main>
   );
 }
