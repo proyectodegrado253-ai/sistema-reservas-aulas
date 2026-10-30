@@ -99,12 +99,30 @@ function buildFreeSlots(reservations: ReservationItem[] = []) {
       start: timeToMinutes(reservation.hora_inicio),
       end: timeToMinutes(reservation.hora_fin),
     }))
+    .filter((segment) => segment.end > segment.start)
     .sort((a, b) => a.start - b.start);
+
+  const normalizedSegments: Array<{ start: number; end: number }> = [];
+
+  for (const segment of occupied) {
+    const last = normalizedSegments[normalizedSegments.length - 1];
+    if (!last) {
+      normalizedSegments.push({ ...segment });
+      continue;
+    }
+
+    if (segment.start <= last.end) {
+      last.end = Math.max(last.end, segment.end);
+      continue;
+    }
+
+    normalizedSegments.push({ ...segment });
+  }
 
   const free: Array<{ start: string; end: string }> = [];
   let current = startOfDayMinutes;
 
-  for (const segment of occupied) {
+  for (const segment of normalizedSegments) {
     if (current < segment.start) {
       free.push({ start: minutesToTime(current), end: minutesToTime(segment.start) });
     }
@@ -399,9 +417,10 @@ export default function HorariosPage() {
                           background: reservation.estado === "Pendiente" ? "#dfeef1" : reservation.estado === "Aprobada" ? "#d7f0d2" : "#f5d8d8",
                         }}
                         onClick={() => handleOccupiedSlotClick(reservation)}
-                        title={`${teacher} · ${reservation.hora_inicio} - ${reservation.hora_fin}`}
+                        title={`OCUPADO · ${teacher} · ${reservation.hora_inicio} - ${reservation.hora_fin}`}
                       >
-                        <span>{teacher.toUpperCase()}</span>
+                        <span>OCUPADO</span>
+                        <small>{teacher}</small>
                         <small>{reservation.hora_inicio} - {reservation.hora_fin}</small>
                       </button>
                     );
@@ -421,6 +440,7 @@ export default function HorariosPage() {
                           width: `${width}%`,
                         }}
                         onClick={() => handleFreeSlotClick(room, slot.start, slot.end)}
+                        title={`Libre · ${room.nombre_aula} · ${slot.start} - ${slot.end}`}
                         aria-label={`Reservar ${room.nombre_aula} entre ${slot.start} y ${slot.end}`}
                       />
                     );

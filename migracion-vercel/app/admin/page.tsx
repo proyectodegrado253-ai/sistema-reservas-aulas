@@ -206,25 +206,33 @@ export default function AdminPage() {
     }
   };
 
-  const exportCsv = (name: string, rows: Array<Record<string, string | number>>) => {
-    const headers = Object.keys(rows[0] ?? { Fecha: "", Usuario: "", Aula: "", Estado: "" });
-    const csv = [headers.join(",")]
-      .concat(
-        rows.map((row) =>
-          headers
-            .map((header) => `"${String(row[header] ?? "").replace(/"/g, '""')}"`)
-            .join(","),
-        ),
-      )
-      .join("\n");
+  const exportReport = async (scope: "usuarios" | "aulas" | "reservas" | "horarios", format: "csv" | "pdf") => {
+    const filename = `${scope}.${format}`;
 
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `${name}.csv`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+    try {
+      const response = await fetch(`/api/reports/export?scope=${scope}&type=${format}`, {
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({ error: "No se pudo generar el archivo solicitado." }));
+        throw new Error(payload.error || "No se pudo generar el archivo solicitado.");
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      setMessage(`Reporte ${scope} descargado correctamente.`);
+    } catch (exportError) {
+      console.error("Error exportando reporte:", exportError);
+      setError(exportError instanceof Error ? exportError.message : "No se pudo descargar el reporte solicitado.");
+    }
   };
 
   useEffect(() => {
@@ -416,19 +424,10 @@ export default function AdminPage() {
               </div>
 
               <div className="export-actions">
-                <button type="button" className="primary-btn" onClick={() => exportCsv("usuarios-institucionales", [
-                  { Fecha: "2026-10-29", Usuario: "Admin Z", Aula: "Aula Especializada Matemáticas", Estado: "Aprobada" },
-                  { Fecha: "2026-10-29", Usuario: "Profesor X", Aula: "Laboratorio de Física", Estado: "Pendiente" },
-                ])}>Exportar usuarios a Excel</button>
-                <button type="button" className="primary-btn" onClick={() => window.print()}>Exportar aulas a PDF</button>
-                <button type="button" className="primary-btn" onClick={() => exportCsv("horarios-institucionales", [
-                  { Fecha: "2026-10-29", Aula: "Laboratorio de Química", Horario: "08:00 - 10:00", Docente: "Ana Mercado" },
-                  { Fecha: "2026-10-29", Aula: "Punto Vive Digital", Horario: "10:00 - 12:00", Docente: "Luis García" },
-                ])}>Exportar horarios a CSV</button>
-                <button type="button" className="primary-btn alt" onClick={() => exportCsv("historico-reservas", [
-                  { Fecha: "2026-10-29", Usuario: "Profesor X", Aula: "Sala de Arte", Estado: "Aprobada" },
-                  { Fecha: "2026-10-28", Usuario: "Docente Y", Aula: "Biblioteca", Estado: "Rechazada" },
-                ])}>Descargar historial de reservas</button>
+                <button type="button" className="primary-btn" onClick={() => void exportReport("usuarios", "csv")}>Exportar usuarios a Excel</button>
+                <button type="button" className="primary-btn" onClick={() => void exportReport("aulas", "pdf")}>Exportar aulas a PDF</button>
+                <button type="button" className="primary-btn" onClick={() => void exportReport("horarios", "csv")}>Exportar horarios a CSV</button>
+                <button type="button" className="primary-btn alt" onClick={() => void exportReport("reservas", "pdf")}>Descargar historial de reservas</button>
               </div>
             </article>
 

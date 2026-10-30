@@ -4104,7 +4104,117 @@ body {
   }
 }
 
+@media (max-width: 900px) {
+  .page-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .role-sidebar {
+    border-right: none;
+    border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+    padding: 0.75rem 0.75rem 0.85rem;
+  }
+
+  .role-sidebar .sidebar-menu {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.45rem;
+  }
+
+  .content-panel {
+    padding: 0.8rem 0.7rem 1rem;
+  }
+
+  .compact-panel {
+    gap: 0.65rem;
+  }
+
+  .stats-grid.compact-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.6rem;
+  }
+
+  .dashboard-alert-card {
+    padding: 0.7rem 0.75rem;
+  }
+
+  .dashboard-alert-header,
+  .dashboard-alert-body,
+  .dashboard-alert-actions {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .dashboard-alert-actions {
+    width: 100%;
+  }
+
+  .dashboard-alert-actions a {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .timeline-row {
+    grid-template-columns: 1fr;
+    gap: 0.55rem;
+  }
+
+  .timeline-room-label {
+    min-height: auto;
+    padding: 0.7rem 3rem 0.7rem 0.7rem;
+  }
+
+  .timeline-track {
+    min-height: 62px;
+  }
+
+  .timeline-reservation-pill {
+    top: 11px;
+    height: 34px;
+  }
+
+  .timeline-free-slot {
+    top: 11px;
+    height: 34px;
+  }
+}
+
 @media (max-width: 640px) {
+  .content-panel {
+    padding: 0.7rem 0.6rem 0.9rem;
+  }
+
+  .stats-grid.compact-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stat-card.compact-stat-card {
+    padding: 0.7rem 0.65rem;
+  }
+
+  .stat-card.compact-stat-card p {
+    font-size: 0.58rem;
+    margin-bottom: 0.2rem;
+  }
+
+  .stat-card.compact-stat-card strong {
+    font-size: 1.2rem;
+  }
+
+  .dashboard-alert-body {
+    gap: 0.4rem;
+  }
+
+  .dashboard-alert-body strong {
+    font-size: 1rem;
+  }
+
+  .dashboard-alert-countdown {
+    font-size: 0.7rem;
+    width: 100%;
+    justify-content: flex-start;
+  }
+
   .timeline-header {
     flex-direction: column;
     align-items: flex-start;
@@ -4112,6 +4222,7 @@ body {
 
   .timeline-filters {
     justify-content: flex-start;
+    flex-wrap: wrap;
   }
 
   .timeline-board {
@@ -4120,6 +4231,14 @@ body {
 
   .timeline-room-label {
     padding-right: 3rem;
+  }
+
+  .timeline-reservation-pill span {
+    font-size: 0.56rem;
+  }
+
+  .timeline-reservation-pill small {
+    font-size: 0.46rem;
   }
 
   .timeline-modal-actions {
