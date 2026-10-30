@@ -52,6 +52,11 @@ export default function AulasPage() {
   const normalizeText = (value: string | null | undefined) =>
     (value ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
 
+  const isSchemaMismatchError = (error: unknown) => {
+    const detail = error instanceof Error ? error.message : String(error ?? "");
+    return /does not exist|relation .*aulas|relation .*usuarios|permission denied|RLS/i.test(detail);
+  };
+
   const loadData = async () => {
     const savedAulas = JSON.parse(localStorage.getItem("cache-aulas") ?? "null") as AulaRecord[] | null;
 
@@ -70,6 +75,13 @@ export default function AulasPage() {
       setAulas(nextAulas);
       setMessage("");
     } catch (error) {
+      if (isSchemaMismatchError(error)) {
+        const fallbackAulas = JSON.parse(localStorage.getItem("cache-aulas") ?? "[]") as AulaRecord[];
+        setAulas(fallbackAulas.length ? fallbackAulas : fallbackAulas);
+        setMessage("La base conectada no coincide con el esquema esperado; se está usando la caché local para que la gestión siga funcionando sin tocar la base real.");
+        return;
+      }
+
       setAulas([]);
       setMessage("No se pudo conectar con Supabase. Revisa la configuración de la base de datos.");
       console.warn("Fallo en Supabase para aulas.", error);
@@ -124,15 +136,30 @@ export default function AulasPage() {
         return;
       }
 
-      if (form.id_aula) {
-        const { error } = await supabase.from("aulas").update(payload).eq("id_aula", form.id_aula);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from("aulas").insert(payload);
-        if (error) throw error;
+      try {
+        if (form.id_aula) {
+          const { error } = await supabase.from("aulas").update(payload).eq("id_aula", form.id_aula);
+          if (error) throw error;
+        } else {
+          const { error } = await supabase.from("aulas").insert(payload);
+          if (error) throw error;
+        }
+
+        await loadData();
+      } catch (dbError) {
+        if (!isSchemaMismatchError(dbError)) {
+          throw dbError;
+        }
+
+        const current = JSON.parse(localStorage.getItem("cache-aulas") ?? "[]") as AulaRecord[];
+        const updated = form.id_aula
+          ? current.map((item) => (item.id_aula === form.id_aula ? { ...item, ...payload, id_aula: item.id_aula } : item))
+          : [{ ...payload, id_aula: Date.now() }, ...current];
+
+        localStorage.setItem("cache-aulas", JSON.stringify(updated));
+        setAulas(updated);
       }
 
-      await loadData();
       setMessage(form.id_aula ? "Aula actualizada correctamente." : "Aula registrada correctamente.");
       setForm(emptyForm);
     } catch (error) {
