@@ -129,86 +129,12 @@ if (!empty($perfilUsuario['avatar'])) {
             </section>
 
             <section class="content-grid single-column">
-                <aside class="panel-card profile-panel" id="perfil">
-                    <div class="panel-header">
-                        <h2>Datos personales</h2>
-                    </div>
-
-                    <?php if (isset($_SESSION['perfil_error'])): ?>
-                        <div class="form-alert is-error"><?= htmlspecialchars($_SESSION['perfil_error']); ?></div>
-                        <?php unset($_SESSION['perfil_error']); ?>
-                    <?php endif; ?>
-
-                    <?php if (isset($_SESSION['perfil_exito'])): ?>
-                        <div class="form-alert is-success"><?= htmlspecialchars($_SESSION['perfil_exito']); ?></div>
-                        <?php unset($_SESSION['perfil_exito']); ?>
-                    <?php endif; ?>
-
-                    <form action="../usuarios/procesar_perfil.php" method="POST" enctype="multipart/form-data" class="profile-form">
-                        <div class="avatar-upload-wrap">
-                            <div class="avatar-upload">
-                                <img id="avatarPreview" src="<?= htmlspecialchars($avatarSesion, ENT_QUOTES, 'UTF-8'); ?>" alt="Avatar actual">
-                                <label class="upload-button" for="avatarInput">
-                                    <i class="bi bi-camera"></i>
-                                </label>
-                                <input id="avatarInput" type="file" name="avatar" accept="image/jpeg,image/png,image/webp,image/gif">
-                            </div>
-                        </div>
-                        <small class="avatar-recommendation">Recomendado: 400×400 px · JPG, PNG o WEBP</small>
-
-                        <div class="form-row two-col">
-                            <label class="field">
-                                <span>Nombre</span>
-                                <input type="text" name="nombre" value="<?= htmlspecialchars((string) ($perfilUsuario['nombre'] ?? '')); ?>" required>
-                            </label>
-                            <label class="field">
-                                <span>Apellido</span>
-                                <input type="text" name="apellido" value="<?= htmlspecialchars((string) ($perfilUsuario['apellido'] ?? '')); ?>" required>
-                            </label>
-                        </div>
-
-                        <label class="field">
-                            <span>Correo</span>
-                            <input type="email" name="email" value="<?= htmlspecialchars((string) ($perfilUsuario['email'] ?? '')); ?>" required>
-                        </label>
-
-                        <div class="form-row two-col">
-                            <label class="field">
-                                <span>Cargo</span>
-                                <select name="cargo">
-                                    <option value="">Selecciona</option>
-                                    <option value="Docente" <?= (($perfilUsuario['cargo'] ?? '') === 'Docente') ? 'selected' : ''; ?>>Docente</option>
-                                    <option value="Coordinador" <?= (($perfilUsuario['cargo'] ?? '') === 'Coordinador') ? 'selected' : ''; ?>>Coordinador</option>
-                                    <option value="Director" <?= (($perfilUsuario['cargo'] ?? '') === 'Director') ? 'selected' : ''; ?>>Director</option>
-                                    <option value="Técnico" <?= (($perfilUsuario['cargo'] ?? '') === 'Técnico') ? 'selected' : ''; ?>>Técnico</option>
-                                    <option value="Asistente" <?= (($perfilUsuario['cargo'] ?? '') === 'Asistente') ? 'selected' : ''; ?>>Asistente</option>
-                                    <option value="Otro" <?= (($perfilUsuario['cargo'] ?? '') === 'Otro') ? 'selected' : ''; ?>>Otro</option>
-                                </select>
-                            </label>
-                            <label class="field">
-                                <span>Área</span>
-                                <select name="area">
-                                    <option value="">Selecciona</option>
-                                    <option value="Informática" <?= (($perfilUsuario['area'] ?? '') === 'Informática') ? 'selected' : ''; ?>>Informática</option>
-                                    <option value="Matemáticas" <?= (($perfilUsuario['area'] ?? '') === 'Matemáticas') ? 'selected' : ''; ?>>Matemáticas</option>
-                                    <option value="Ciencias" <?= (($perfilUsuario['area'] ?? '') === 'Ciencias') ? 'selected' : ''; ?>>Ciencias</option>
-                                    <option value="Humanidades" <?= (($perfilUsuario['area'] ?? '') === 'Humanidades') ? 'selected' : ''; ?>>Humanidades</option>
-                                    <option value="Idiomas" <?= (($perfilUsuario['area'] ?? '') === 'Idiomas') ? 'selected' : ''; ?>>Idiomas</option>
-                                    <option value="Administración" <?= (($perfilUsuario['area'] ?? '') === 'Administración') ? 'selected' : ''; ?>>Administración</option>
-                                    <option value="Electrónica" <?= (($perfilUsuario['area'] ?? '') === 'Electrónica') ? 'selected' : ''; ?>>Electrónica</option>
-                                    <option value="Otra" <?= (($perfilUsuario['area'] ?? '') === 'Otra') ? 'selected' : ''; ?>>Otra</option>
-                                </select>
-                            </label>
-                        </div>
-
-                        <label class="field">
-                            <span>CC / documento</span>
-                            <input type="text" name="cc" value="<?= htmlspecialchars((string) ($perfilUsuario['cc'] ?? '')); ?>" placeholder="Opcional">
-                        </label>
-
-                        <button type="submit" class="btn btn-primary btn-block">Guardar cambios</button>
-                    </form>
-                </aside>
+                <?php
+                $profileUser = $perfilUsuario;
+                $profileAvatar = $avatarSesion;
+                $profileFormAction = '../usuarios/procesar_perfil.php';
+                require __DIR__ . '/../includes/perfil_form.php';
+                ?>
             </section>
         </main>
     </div>

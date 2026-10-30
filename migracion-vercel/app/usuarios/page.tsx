@@ -63,7 +63,7 @@ export default function UsuariosPage() {
     if (!supabase) {
       setRoles([]);
       setUsuarios([]);
-      setMessage("Supabase no está configurado. No se pueden cargar usuarios reales sin NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY.");
+      setMessage("Supabase no está configurado. No se pueden cargar usuarios reales sin SUPABASE_URL y SUPABASE_ANON_KEY (o las variables NEXT_PUBLIC_* si aplica).");
       return;
     }
 

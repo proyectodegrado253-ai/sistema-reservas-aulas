@@ -84,7 +84,7 @@ export function getSupabaseStatus(): SupabaseConnectionStatus {
       enabled: false,
       reason: "invalid-credentials",
       message:
-        "La configuración de Supabase no es válida. Revisa NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY.",
+        "La configuración de Supabase no es válida. Revisa SUPABASE_URL y SUPABASE_ANON_KEY (o NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY si las usas en cliente).",
     };
   }
 
@@ -102,7 +102,7 @@ export function getSupabaseStatus(): SupabaseConnectionStatus {
       enabled: false,
       reason: "missing-env",
       message:
-        "Supabase no está configurado: faltan NEXT_PUBLIC_SUPABASE_URL y/o NEXT_PUBLIC_SUPABASE_ANON_KEY. El sistema no puede guardar en la base real.",
+        "Supabase no está configurado: faltan SUPABASE_URL y/o SUPABASE_ANON_KEY. También puedes usar NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY si la app lo requiere.",
     };
   }
 
@@ -111,7 +111,7 @@ export function getSupabaseStatus(): SupabaseConnectionStatus {
       enabled: false,
       reason: "invalid-url",
       message:
-        "La URL de Supabase no es válida. Revisa NEXT_PUBLIC_SUPABASE_URL antes de intentar guardar reservas o usuarios reales.",
+        "La URL de Supabase no es válida. Revisa SUPABASE_URL antes de intentar guardar reservas o usuarios reales.",
     };
   }
 

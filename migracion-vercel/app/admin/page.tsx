@@ -145,7 +145,7 @@ export default function AdminPage() {
       const [usuariosResult, aulasResult, reservasResult] = await Promise.all([
         client.from("usuarios").select("id_usuario, nombre, apellido, estado, id_rol").order("nombre", { ascending: true }),
         client.from("aulas").select("id_aula, nombre_aula, codigo_aula, estado").order("nombre_aula", { ascending: true }),
-        client.from("reservas").select("*, usuarios(nombre, apellido, email), aulas(nombre_aula, codigo_aula)").order("fecha_reserva", { ascending: false }),
+        client.from("reservas").select("*, usuarios!fk_reservas_usuarios(nombre, apellido, email), aulas!fk_reservas_aulas(nombre_aula, codigo_aula)").order("fecha_reserva", { ascending: false }),
       ]);
 
       if (usuariosResult.error) throw usuariosResult.error;

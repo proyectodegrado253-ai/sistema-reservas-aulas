@@ -56,7 +56,7 @@ export default function AulasPage() {
     const savedAulas = JSON.parse(localStorage.getItem("cache-aulas") ?? "null") as AulaRecord[] | null;
 
     if (!supabase) {
-      setMessage("Supabase no está configurado. Debes definir NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY antes de cargar aulas reales.");
+      setMessage("Supabase no está configurado. Debes definir SUPABASE_URL y SUPABASE_ANON_KEY antes de cargar aulas reales (o NEXT_PUBLIC_* si usas esas variables en cliente).");
       setAulas([]);
       return;
     }

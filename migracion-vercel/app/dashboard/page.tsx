@@ -3,7 +3,7 @@
 import RoleSidebar from "@/components/role-sidebar";
 import { isAdminSession, isProfessorSession } from "@/lib/auth";
 import { appendAuditEntry, buildHourSlots, overlaps, validateAcademicReservation } from "@/lib/academic-rules";
-import { supabase } from "@/lib/supabase";
+import { getSupabaseStatus, supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { Fragment, useEffect, useMemo, useState } from "react";
 
@@ -88,17 +88,32 @@ export default function DashboardPage() {
   const [selectedAgendaRoom, setSelectedAgendaRoom] = useState<{ id_aula: number; nombre_aula: string; codigo_aula?: string; slots: Array<{ start: string; end: string; occupied: boolean }> } | null>(null);
   const [timelineMessage, setTimelineMessage] = useState<string>("");
   const [savingTimeline, setSavingTimeline] = useState(false);
+  const [isReminderOpen, setIsReminderOpen] = useState(true);
+  const [backendStatus, setBackendStatus] = useState<{ enabled: boolean; message: string; reason: string | null }>({
+    enabled: false,
+    message: "La conexión a la base de datos está temporalmente limitada. Se muestran los datos disponibles mientras se restablece el servicio.",
+    reason: null,
+  });
 
   const timelineSlots = useMemo(() => buildHourSlots({ startHour: 7, endHour: 18, stepMinutes: 60 }), []);
 
   const loadDashboardData = async () => {
     const client = supabase;
+    const status = getSupabaseStatus();
+    const gentleStatus = {
+      ...status,
+      message: status.enabled
+        ? "La información está sincronizada y actualizada."
+        : "La conexión a la base de datos está temporalmente limitada. Se muestran los datos disponibles mientras se restablece el servicio.",
+    };
+    setBackendStatus(gentleStatus);
 
     if (!client) {
       setStats({ aulasActivas: 0, reservasEsteMes: 0, aprobadas: 0, pendientes: 0, proximaAula: "Sin reserva" });
-      setRecentActivities([]);
+      setRecentActivities([{ title: "Sin datos conectados", time: "Sincronización pendiente" }]);
+      setAlertReservation(null);
       setLoading(false);
-      setError("La base de datos no está configurada para mostrar información del dashboard.");
+      setError(null);
       return;
     }
 
@@ -260,6 +275,28 @@ export default function DashboardPage() {
     return getReservationCountdown(alertReservation, currentTime);
   }, [alertReservation, currentTime]);
 
+  const reminderItems = useMemo(() => {
+    const items = [
+      {
+        label: "Hoy",
+        value: alertReservation ? `${alertReservation.aula} · ${alertReservation.inicio} - ${alertReservation.fin}` : "Sin reserva programada",
+        accent: alertReservation ? "positive" : "neutral",
+      },
+      {
+        label: "Pendientes",
+        value: `${stats.pendientes} reservas por revisar`,
+        accent: stats.pendientes > 0 ? "warning" : "positive",
+      },
+      {
+        label: "Próxima clase",
+        value: stats.proximaAula === "Sin reserva" ? "Sin actividades programadas" : stats.proximaAula,
+        accent: stats.proximaAula === "Sin reserva" ? "neutral" : "positive",
+      },
+    ];
+
+    return items;
+  }, [alertReservation, stats.pendientes, stats.proximaAula]);
+
   const timelineGrid = useMemo(() => {
     return timelineAulas.map((aula) => ({
       ...aula,
@@ -408,6 +445,17 @@ export default function DashboardPage() {
 
         {error ? <div className="info-banner" role="status">{error}</div> : null}
 
+        {!backendStatus.enabled ? (
+          <div className="dashboard-backend-state" role="status" aria-live="polite">
+            <div className="dashboard-backend-state-header">
+              <span className="dashboard-backend-state-badge">Estado</span>
+              <strong>{backendStatus.enabled ? "Sincronizado" : "Actualizando"}</strong>
+            </div>
+            <p>{backendStatus.message}</p>
+            <small>La información se reintenta automáticamente cuando la conexión vuelva.</small>
+          </div>
+        ) : null}
+
         {loading ? (
           <PanelSkeleton />
         ) : (
@@ -431,31 +479,43 @@ export default function DashboardPage() {
               </article>
             </div>
 
-            <section className="dashboard-alert-card">
-              <div className="dashboard-alert-header">
-                <span className="dashboard-alert-badge">Recordatorio</span>
-                <span className="dashboard-alert-date">{alertReservation ? alertReservation.fecha : "Sin reserva"}</span>
-              </div>
-
-              <div className="dashboard-alert-body">
-                <div>
-                  <p>Tu reserva del día</p>
-                  <strong>{alertReservation ? alertReservation.aula : "Sin reserva programada"}</strong>
+            <section className={`dashboard-alert-card ${isReminderOpen ? "is-open" : ""}`}>
+              <button type="button" className="dashboard-alert-trigger" onClick={() => setIsReminderOpen((value) => !value)} aria-expanded={isReminderOpen}>
+                <div className="dashboard-alert-header">
+                  <span className="dashboard-alert-badge">Recordatorio</span>
+                  <span className="dashboard-alert-date">{alertReservation ? alertReservation.fecha : "Sin reserva"}</span>
+                  <span className="dashboard-alert-toggle" aria-hidden="true">{isReminderOpen ? "−" : "+"}</span>
                 </div>
-                <span>
-                  {alertReservation
-                    ? `${alertReservation.inicio} - ${alertReservation.fin}`
-                    : "No tienes ninguna reserva activa para hoy."}
-                </span>
-              </div>
 
-              <div className="dashboard-alert-countdown" aria-live="polite">
-                {countdownText}
-              </div>
+                <div className="dashboard-alert-body">
+                  <div>
+                    <p>Tu reserva del día</p>
+                    <strong>{alertReservation ? alertReservation.aula : "Sin reserva programada"}</strong>
+                  </div>
+                  <span>
+                    {alertReservation
+                      ? `${alertReservation.inicio} - ${alertReservation.fin}`
+                      : "No tienes ninguna reserva activa para hoy."}
+                  </span>
+                </div>
+              </button>
 
-              <div className="dashboard-alert-actions">
-                <a href="/reservas" className="primary-button compact-link">Ver reservas</a>
-                <a href="/perfil" className="secondary-button compact-link">Perfil</a>
+              <div className={`dashboard-alert-panel ${isReminderOpen ? "open" : ""}`} aria-live="polite">
+                <div className="dashboard-alert-countdown">{countdownText}</div>
+
+                <ul className="dashboard-reminder-list">
+                  {reminderItems.map((item) => (
+                    <li key={item.label} className={`dashboard-reminder-item ${item.accent}`}>
+                      <span>{item.label}</span>
+                      <strong>{item.value}</strong>
+                    </li>
+                  ))}
+                </ul>
+
+                <div className="dashboard-alert-actions">
+                  <a href="/reservas" className="primary-button compact-link">Ver reservas</a>
+                  <a href="/perfil" className="secondary-button compact-link">Perfil</a>
+                </div>
               </div>
             </section>
 

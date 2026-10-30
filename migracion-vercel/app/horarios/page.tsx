@@ -174,7 +174,7 @@ export default function HorariosPage() {
 
         const [aulasResult, reservasResult] = await Promise.all([
           supabase.from("aulas").select("id_aula, nombre_aula, codigo_aula, estado").order("nombre_aula", { ascending: true }),
-          supabase.from("reservas").select("*, usuarios(nombre, apellido, email), aulas(nombre_aula, codigo_aula)").order("fecha_reserva", { ascending: false }),
+          supabase.from("reservas").select("*, usuarios!fk_reservas_usuarios(nombre, apellido, email), aulas!fk_reservas_aulas(nombre_aula, codigo_aula)").order("fecha_reserva", { ascending: false }),
         ]);
 
         if (aulasResult.error) throw aulasResult.error;

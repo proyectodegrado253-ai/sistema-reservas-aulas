@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
 const supabaseServiceKey =
   process.env.SUPABASE_SERVICE_ROLE_KEY ??
+  process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY ??
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
   process.env.SUPABASE_ANON_KEY;
 
@@ -81,7 +82,7 @@ export async function GET(request: NextRequest) {
   try {
     if (!supabaseUrl || !supabaseServiceKey) {
       return NextResponse.json(
-        { error: "Supabase no está configurado en Vercel. Revisa NEXT_PUBLIC_SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY." },
+        { error: "Supabase no está configurado en Vercel. Revisa SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY (o sus equivalentes NEXT_PUBLIC_* si estás usando variables públicas)." },
         { status: 500 },
       );
     }
@@ -94,7 +95,7 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    let query = client.from("reservas").select("*, usuarios(nombre, apellido, email), aulas(nombre_aula, codigo_aula)").order("fecha_reserva", { ascending: false });
+    let query = client.from("reservas").select("*, usuarios!fk_reservas_usuarios(nombre, apellido, email), aulas!fk_reservas_aulas(nombre_aula, codigo_aula)").order("fecha_reserva", { ascending: false });
 
     if (scope === "usuarios") {
       const { data, error } = await client.from("usuarios").select("id_usuario, nombre, apellido, email, estado, id_rol").order("nombre", { ascending: true });
@@ -157,7 +158,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (scope === "horarios") {
-      query = client.from("reservas").select("*, usuarios(nombre, apellido, email), aulas(nombre_aula, codigo_aula)").order("fecha_reserva", { ascending: false });
+      query = client.from("reservas").select("*, usuarios!fk_reservas_usuarios(nombre, apellido, email), aulas!fk_reservas_aulas(nombre_aula, codigo_aula)").order("fecha_reserva", { ascending: false });
     }
 
     const { data, error } = await query;

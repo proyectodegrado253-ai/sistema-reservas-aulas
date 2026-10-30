@@ -242,95 +242,12 @@ unset($_SESSION['rbac_success']);
                     </div>
                 </article>
 
-                <aside class="panel-card profile-panel" id="perfil">
-                    <div class="panel-header">
-                        <h2>Mi perfil</h2>
-                    </div>
-
-                    <?php if (isset($_SESSION['perfil_error'])): ?>
-                        <div class="form-alert is-error"><?= htmlspecialchars($_SESSION['perfil_error']); ?></div>
-                        <?php unset($_SESSION['perfil_error']); ?>
-                    <?php endif; ?>
-
-                    <?php if (isset($_SESSION['perfil_exito'])): ?>
-                        <div class="form-alert is-success"><?= htmlspecialchars($_SESSION['perfil_exito']); ?></div>
-                        <?php unset($_SESSION['perfil_exito']); ?>
-                    <?php endif; ?>
-
-                    <form action="usuarios/procesar_perfil.php" method="POST" enctype="multipart/form-data" class="profile-form">
-                        <div class="avatar-upload-wrap">
-                            <div class="avatar-upload">
-                                <img id="avatarPreview" src="<?= htmlspecialchars($avatar, ENT_QUOTES, 'UTF-8'); ?>" alt="Avatar actual">
-                                <label class="upload-button" for="avatarInput">
-                                    <i class="bi bi-camera"></i>
-                                </label>
-                                <input id="avatarInput" type="file" name="avatar" accept="image/jpeg,image/png,image/webp,image/gif">
-                            </div>
-                        </div>
-                        <small class="avatar-recommendation">Recomendado: 400×400 px · JPG, PNG o WEBP</small>
-
-                        <div class="form-row two-col">
-                            <label class="field">
-                                <span>Nombre</span>
-                                <input type="text" name="nombre" value="<?= htmlspecialchars($user['nombre'] ?? ''); ?>" required>
-                            </label>
-                            <label class="field">
-                                <span>Apellido</span>
-                                <input type="text" name="apellido" value="<?= htmlspecialchars($user['apellido'] ?? ''); ?>" required>
-                            </label>
-                        </div>
-
-                        <label class="field">
-                            <span>Correo</span>
-                            <input type="email" name="email" value="<?= htmlspecialchars($user['email'] ?? ''); ?>" required>
-                        </label>
-
-                        <div class="form-row two-col">
-                            <label class="field">
-                                <span>Cargo</span>
-                                <select name="cargo">
-                                    <option value="">Selecciona</option>
-                                    <option value="Docente" <?= ($user['cargo'] ?? '') === 'Docente' ? 'selected' : ''; ?>>Docente</option>
-                                    <option value="Coordinador" <?= ($user['cargo'] ?? '') === 'Coordinador' ? 'selected' : ''; ?>>Coordinador</option>
-                                    <option value="Director" <?= ($user['cargo'] ?? '') === 'Director' ? 'selected' : ''; ?>>Director</option>
-                                    <option value="Técnico" <?= ($user['cargo'] ?? '') === 'Técnico' ? 'selected' : ''; ?>>Técnico</option>
-                                    <option value="Asistente" <?= ($user['cargo'] ?? '') === 'Asistente' ? 'selected' : ''; ?>>Asistente</option>
-                                    <option value="Otro" <?= ($user['cargo'] ?? '') === 'Otro' ? 'selected' : ''; ?>>Otro</option>
-                                </select>
-                            </label>
-                            <label class="field">
-                                <span>Área</span>
-                                <select name="area">
-                                    <option value="">Selecciona</option>
-                                    <option value="Informática" <?= ($user['area'] ?? '') === 'Informática' ? 'selected' : ''; ?>>Informática</option>
-                                    <option value="Matemáticas" <?= ($user['area'] ?? '') === 'Matemáticas' ? 'selected' : ''; ?>>Matemáticas</option>
-                                    <option value="Ciencias" <?= ($user['area'] ?? '') === 'Ciencias' ? 'selected' : ''; ?>>Ciencias</option>
-                                    <option value="Humanidades" <?= ($user['area'] ?? '') === 'Humanidades' ? 'selected' : ''; ?>>Humanidades</option>
-                                    <option value="Idiomas" <?= ($user['area'] ?? '') === 'Idiomas' ? 'selected' : ''; ?>>Idiomas</option>
-                                    <option value="Administración" <?= ($user['area'] ?? '') === 'Administración' ? 'selected' : ''; ?>>Administración</option>
-                                    <option value="Electrónica" <?= ($user['area'] ?? '') === 'Electrónica' ? 'selected' : ''; ?>>Electrónica</option>
-                                    <option value="Otra" <?= ($user['area'] ?? '') === 'Otra' ? 'selected' : ''; ?>>Otra</option>
-                                </select>
-                            </label>
-                        </div>
-
-                        <label class="field">
-                            <span>CC / documento</span>
-                            <input type="text" name="cc" value="<?= htmlspecialchars($user['cc'] ?? ''); ?>" placeholder="Opcional">
-                        </label>
-
-                        <label class="field">
-                            <span>Estilo visual</span>
-                            <select name="theme" id="themeSelector">
-                                <option value="claro">Claro</option>
-                                <option value="azul">Azul premium</option>
-                                <option value="oscuro">Oscuro</option>
-                            </select>
-                        </label>
-
-                        <button type="submit" class="btn btn-primary btn-block">Guardar cambios</button>
-                    </form>
-                </aside>
+                <?php
+                $profileUser = $user;
+                $profileAvatar = $avatar;
+                $profileFormAction = 'usuarios/procesar_perfil.php';
+                require __DIR__ . '/includes/perfil_form.php';
+                ?>
             </section>
         </main>
     </div>
