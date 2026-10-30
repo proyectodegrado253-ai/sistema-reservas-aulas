@@ -223,6 +223,30 @@ export default function HorariosPage() {
     [reservations, activeDate],
   );
 
+  const scheduleInsights = useMemo(() => {
+    const data = rooms.map((room) => {
+      const roomReservations = visibleReservations.filter((item) => Number(item.id_aula) === Number(room.id_aula));
+      const freeSlots = buildFreeSlots(roomReservations);
+      return {
+        room: room.nombre_aula,
+        freeSlots: freeSlots.length,
+        occupied: roomReservations.length,
+      };
+    });
+
+    const availableRooms = data.filter((item) => item.freeSlots > 0).length;
+    const nextClass = [...visibleReservations].sort((a, b) => a.hora_inicio.localeCompare(b.hora_inicio))[0];
+    const mostUsed = data.reduce((best, current) => (current.occupied > best.occupied ? current : best), { room: "Sin datos", freeSlots: 0, occupied: 0 });
+
+    return {
+      availableRooms,
+      totalReservations: visibleReservations.length,
+      nextClassLabel: nextClass ? `${nextClass.aulas?.nombre_aula ?? "Aula"} · ${nextClass.hora_inicio} - ${nextClass.hora_fin}` : "Sin clases programadas",
+      mostUsedRoom: mostUsed.room,
+      totalRooms: rooms.length,
+    };
+  }, [rooms, visibleReservations]);
+
   const handleFreeSlotClick = (room: RoomItem, start: string, end: string) => {
     const sessionName = localStorage.getItem("session-name") || "Profesor asignado";
 
@@ -343,6 +367,40 @@ export default function HorariosPage() {
     }
   };
 
+  const utilizationByRoom = useMemo(() => {
+    return rooms.map((room) => {
+      const roomReservations = visibleReservations.filter((item) => Number(item.id_aula) === Number(room.id_aula));
+      const usage = Math.min(100, Math.max(0, (roomReservations.length / Math.max(1, rooms.length)) * 100));
+
+      return {
+        room: room.nombre_aula,
+        criteria: roomReservations.length,
+        usage,
+      };
+    });
+  }, [rooms, visibleReservations]);
+
+  const timeBlocks = useMemo(() => {
+    const periods = [
+      { label: "07:00", value: 0 },
+      { label: "09:00", value: 0 },
+      { label: "11:00", value: 0 },
+      { label: "13:00", value: 0 },
+      { label: "15:00", value: 0 },
+      { label: "17:00", value: 0 },
+    ];
+
+    for (const reservation of visibleReservations) {
+      const hour = Number(reservation.hora_inicio.split(":")[0]);
+      const bucket = periods.findIndex((period) => hour <= Number(period.label.split(":")[0]));
+      if (bucket >= 0) {
+        periods[Math.max(bucket, 0)].value += 1;
+      }
+    }
+
+    return periods;
+  }, [visibleReservations]);
+
   return (
     <main className="page-shell">
       <RoleSidebar />
@@ -351,13 +409,13 @@ export default function HorariosPage() {
         <div className="timeline-breadcrumb">
           <span className="breadcrumb-leaf">ADMINISTRACIÓN</span>
           <span className="breadcrumb-separator">/</span>
-          <span className="breadcrumb-current">Horarios</span>
+          <span className="breadcrumb-current">Estadísticas</span>
         </div>
 
         <header className="timeline-header">
           <div className="timeline-heading-block">
-            <h1>Línea de tiempo</h1>
-            <p>DISPONIBILIDAD POR AULA</p>
+            <h1>Estadísticas</h1>
+            <p>INDICADORES DEL PROFESOR</p>
           </div>
 
           <div className="timeline-filters">
@@ -374,150 +432,82 @@ export default function HorariosPage() {
           </div>
         </header>
 
-        <div className="timeline-chips-row">
-          {hourMarkers.map((marker) => (
-            <span key={marker}>{marker}</span>
-          ))}
+        <div className="schedule-insights">
+          <div className="schedule-insight-card">
+            <span className="schedule-insight-label">Aulas libres</span>
+            <strong className="schedule-insight-value">{scheduleInsights.availableRooms}/{scheduleInsights.totalRooms}</strong>
+          </div>
+          <div className="schedule-insight-card">
+            <span className="schedule-insight-label">Reservas del día</span>
+            <strong className="schedule-insight-value">{scheduleInsights.totalReservations}</strong>
+          </div>
+          <div className="schedule-insight-card">
+            <span className="schedule-insight-label">Próxima clase</span>
+            <strong className="schedule-insight-value compact-value">{scheduleInsights.nextClassLabel}</strong>
+          </div>
+          <div className="schedule-insight-card">
+            <span className="schedule-insight-label">Más usada</span>
+            <strong className="schedule-insight-value">{scheduleInsights.mostUsedRoom}</strong>
+          </div>
         </div>
 
-        <div className="timeline-board">
-          {rooms.map((room) => {
-            const roomReservations = visibleReservations.filter((item) => Number(item.id_aula) === Number(room.id_aula));
-            const freeSlots = buildFreeSlots(roomReservations);
-
-            return (
-              <div key={room.id_aula} className="timeline-row">
-                <div className="timeline-room-label">
-                  <span className="room-title">AULA ESPECIALIZADA</span>
-                  <strong>{room.nombre_aula}</strong>
-                  <small>{room.codigo_aula}</small>
-                  <span className="room-icon">{room.icon}</span>
+        <div className="stats-graph-grid">
+          <div className="stats-panel">
+            <div className="stats-panel-header">
+              <h3>Uso por aula</h3>
+              <span>{rooms.length} salas</span>
+            </div>
+            <div className="bar-chart">
+              {utilizationByRoom.map((item) => (
+                <div key={item.room} className="bar-row">
+                  <span className="bar-label">{item.room}</span>
+                  <div className="bar-track">
+                    <div className="bar-fill" style={{ width: `${item.usage}%` }} />
+                  </div>
+                  <strong>{Math.round(item.usage)}%</strong>
                 </div>
+              ))}
+            </div>
+          </div>
 
-                <div className="timeline-track" aria-label={`Disponibilidad de ${room.nombre_aula}`}>
-                  {hourMarkers.map((marker) => (
-                    <span
-                      key={`${room.id_aula}-${marker}`}
-                      className="time-marker"
-                      style={{ left: `${((timeToMinutes(marker) - startOfDayMinutes) / totalMinutes) * 100}%` }}
-                    />
-                  ))}
+          <div className="stats-panel">
+            <div className="stats-panel-header">
+              <h3>Picos de uso</h3>
+              <span>Bloques</span>
+            </div>
+            <div className="mini-bars">
+              {timeBlocks.map((block) => (
+                <div key={block.label} className="mini-bar-group">
+                  <span className="mini-bar-value">{block.value}</span>
+                  <div className="mini-bar-track">
+                    <div className="mini-bar-fill" style={{ height: `${Math.max(12, block.value * 28)}%` }} />
+                  </div>
+                  <small>{block.label}</small>
+                </div>
+              ))}
+            </div>
+          </div>
 
-                  {roomReservations.map((reservation) => {
-                    const style = getReservationStyle(reservation.hora_inicio, reservation.hora_fin);
-                    const teacher = getTeacherNameFromReservation(reservation);
-
-                    return (
-                      <button
-                        key={reservation.id_reserva}
-                        type="button"
-                        className="timeline-reservation-pill"
-                        style={{
-                          ...style,
-                          background: reservation.estado === "Pendiente" ? "#dfeef1" : reservation.estado === "Aprobada" ? "#d7f0d2" : "#f5d8d8",
-                        }}
-                        onClick={() => handleOccupiedSlotClick(reservation)}
-                        title={`OCUPADO · ${teacher} · ${reservation.hora_inicio} - ${reservation.hora_fin}`}
-                      >
-                        <span>OCUPADO</span>
-                        <small>{teacher}</small>
-                        <small>{reservation.hora_inicio} - {reservation.hora_fin}</small>
-                      </button>
-                    );
-                  })}
-
-                  {freeSlots.map((slot) => {
-                    const left = ((timeToMinutes(slot.start) - startOfDayMinutes) / totalMinutes) * 100;
-                    const width = ((timeToMinutes(slot.end) - timeToMinutes(slot.start)) / totalMinutes) * 100;
-
-                    return (
-                      <button
-                        key={`${room.id_aula}-${slot.start}-${slot.end}`}
-                        type="button"
-                        className="timeline-free-slot"
-                        style={{
-                          left: `${left}%`,
-                          width: `${width}%`,
-                        }}
-                        onClick={() => handleFreeSlotClick(room, slot.start, slot.end)}
-                        title={`Libre · ${room.nombre_aula} · ${slot.start} - ${slot.end}`}
-                        aria-label={`Reservar ${room.nombre_aula} entre ${slot.start} y ${slot.end}`}
-                      />
-                    );
-                  })}
+          <div className="stats-panel full-width">
+            <div className="stats-panel-header">
+              <h3>Disponibilidad general</h3>
+              <span>Hoy</span>
+            </div>
+            <div className="donut-wrap">
+              <div className="donut-chart" style={{ background: `conic-gradient(#1d4ed8 0 ${scheduleInsights.availableRooms * 100 / Math.max(1, scheduleInsights.totalRooms)}%, #e2e8f0 ${scheduleInsights.availableRooms * 100 / Math.max(1, scheduleInsights.totalRooms)}% 100%)` }}>
+                <div className="donut-center">
+                  <strong>{scheduleInsights.availableRooms}</strong>
+                  <span>libres</span>
                 </div>
               </div>
-            );
-          })}
-        </div>
-
-        {notice ? (
-          <div className="timeline-notice" role="status">
-            {notice}
+              <div className="legend-stack">
+                <div className="legend-item"><span className="legend-dot blue" /> Libres</div>
+                <div className="legend-item"><span className="legend-dot gray" /> Ocupadas</div>
+              </div>
+            </div>
           </div>
-        ) : null}
+        </div>
       </section>
-
-      {draft ? (
-        <div className="timeline-modal-backdrop" onClick={() => setDraft(null)}>
-          <div className="timeline-modal" onClick={(event) => event.stopPropagation()}>
-            <div className="timeline-modal-header">
-              <div>
-                <p>Reserva rápida</p>
-                <h3>{draft.roomName}</h3>
-              </div>
-              <button type="button" className="timeline-close" onClick={() => setDraft(null)}>
-                ×
-              </button>
-            </div>
-
-            <div className="timeline-summary-grid">
-              <div>
-                <span>Fecha</span>
-                <strong>{draft.date}</strong>
-              </div>
-              <div>
-                <span>Bloque</span>
-                <strong>{draft.start} - {draft.end}</strong>
-              </div>
-            </div>
-
-            <label className="timeline-form-field">
-              Docente
-              <input
-                value={draft.teacher}
-                onChange={(event) => setDraft((current) => (current ? { ...current, teacher: event.target.value } : current))}
-              />
-            </label>
-
-            <label className="timeline-form-field">
-              Materia / motivo
-              <textarea
-                rows={3}
-                value={draft.subject}
-                onChange={(event) => setDraft((current) => (current ? { ...current, subject: event.target.value } : current))}
-              />
-            </label>
-
-            <div className="timeline-modal-actions">
-              <button type="button" className="secondary-button" onClick={() => setDraft(null)}>
-                Cancelar
-              </button>
-              <button type="button" className="primary-button" onClick={() => void confirmDirectReservation()}>
-                {isAdmin ? "Forzar reserva" : "Confirmar reserva"}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {contextReservation && isAdmin ? (
-        <div className="timeline-context-menu" role="menu" aria-label="Acciones rápidas del administrador">
-          <button type="button" onClick={() => void applyAdminAction("cancelar")}>Cancelar Reserva</button>
-          <button type="button" onClick={() => void applyAdminAction("liberar")}>Liberar Aula</button>
-          <button type="button" onClick={() => void applyAdminAction("editar")}>Editar Asignación</button>
-        </div>
-      ) : null}
     </main>
   );
 }

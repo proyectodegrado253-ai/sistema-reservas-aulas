@@ -126,6 +126,20 @@ export default function AdminPage() {
 
   const roomMatrix = useMemo(() => buildRoomMatrix(aulas, reservas, weekDates), [aulas, reservas, weekDates]);
 
+  const trendData = useMemo(() => {
+    const points = weekDates.length ? weekDates : dayLabels.map((label, index) => ({ key: `day-${index}`, label }));
+    const max = Math.max(1, ...points.map((point) => reservas.filter((reserva) => reserva.fecha_reserva === point.key).length));
+
+    return points.map((point) => {
+      const value = reservas.filter((reserva) => reserva.fecha_reserva === point.key).length;
+      return {
+        label: point.label.slice(0, 3),
+        value,
+        height: `${Math.max(18, (value / max) * 100)}%`,
+      };
+    });
+  }, [reservas, weekDates]);
+
   const loadStats = async () => {
     const client = supabase;
 
@@ -336,6 +350,25 @@ export default function AdminPage() {
                 <small>Este mes</small>
               </article>
             </div>
+
+            <article className="info-card trend-card compact-info-card">
+              <div className="section-header">
+                <h3>Rendimiento semanal</h3>
+                <span>Semana</span>
+              </div>
+
+              <div className="trend-chart" aria-label="Gráfico de reservas por día de la semana">
+                {trendData.map((point) => (
+                  <div key={`${point.label}-${point.value}`} className="trend-bar-group">
+                    <span>{point.value}</span>
+                    <div className="trend-bar-track">
+                      <div className="trend-bar-fill" style={{ height: point.height }} />
+                    </div>
+                    <small>{point.label}</small>
+                  </div>
+                ))}
+              </div>
+            </article>
 
             <div className="admin-two-column">
               <article className="info-card admin-card compact-info-card validation-card">

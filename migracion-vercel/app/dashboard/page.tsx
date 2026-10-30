@@ -298,28 +298,44 @@ export default function DashboardPage() {
   }, [alertReservation, stats.pendientes, stats.proximaAula]);
 
   const timelineGrid = useMemo(() => {
+    const currentUserId = typeof window === "undefined"
+      ? 0
+      : Number(window.localStorage.getItem("session-user-id") ?? 0);
+
     return timelineAulas.map((aula) => ({
       ...aula,
       slots: timelineSlots.map((slot) => {
-        const occupied = timelineReservations.some((reservation) => {
-          if (Number(reservation.id_aula) !== Number(aula.id_aula)) {
+        const reservation = timelineReservations.find((item) => {
+          if (Number(item.id_aula) !== Number(aula.id_aula)) {
             return false;
           }
 
-          if (reservation.fecha_reserva !== timelineDate) {
+          if (item.fecha_reserva !== timelineDate) {
             return false;
           }
 
-          return overlaps(slot.start, slot.end, reservation.hora_inicio, reservation.hora_fin);
+          return overlaps(slot.start, slot.end, item.hora_inicio, item.hora_fin);
         });
+
+        const occupied = Boolean(reservation);
+        const isMine = occupied && Number(reservation?.id_usuario) === currentUserId;
+        const isOther = occupied && !isMine;
+        const selected = Boolean(
+          timelineDraft &&
+            timelineDraft.id_aula === Number(aula.id_aula) &&
+            timelineDraft.hora_inicio === slot.start &&
+            timelineDraft.hora_fin === slot.end
+        );
 
         return {
           ...slot,
           occupied,
+          owner: isMine ? "mine" : isOther ? "other" : "free",
+          selected,
         };
       }),
     }));
-  }, [timelineAulas, timelineReservations, timelineDate, timelineSlots]);
+  }, [timelineAulas, timelineReservations, timelineDate, timelineDraft, timelineSlots]);
 
   const roomCards = useMemo(() => {
     return timelineAulas.map((aula) => {
@@ -555,17 +571,35 @@ export default function DashboardPage() {
                       </button>
 
                       <div className="timeline-room-track" aria-label={`Agenda de ${aula.nombre_aula}`}>
-                        {aula.slots.map((slot) => (
-                          <button
-                            key={`${aula.id_aula}-${slot.start}`}
-                            type="button"
-                            className={slot.occupied ? "timeline-band occupied" : "timeline-band free"}
-                            title={slot.occupied ? `${aula.nombre_aula} ocupada ${slot.start} - ${slot.end}` : `Reservar ${aula.nombre_aula} ${slot.start} - ${slot.end}`}
-                            onClick={() => !slot.occupied && openTimelineSlot(aula.id_aula, { start: slot.start, end: slot.end })}
-                          >
-                            <span>{slot.occupied ? slot.start : ""}</span>
-                          </button>
-                        ))}
+                        {aula.slots.map((slot) => {
+                          const slotClasses = ["timeline-band"];
+
+                          if (slot.occupied) {
+                            slotClasses.push(slot.owner === "mine" ? "occupied mine" : slot.owner === "other" ? "occupied other" : "occupied");
+                          } else {
+                            slotClasses.push(slot.selected ? "selected" : "free");
+                          }
+
+                          return (
+                            <button
+                              key={`${aula.id_aula}-${slot.start}`}
+                              type="button"
+                              className={slotClasses.join(" ")}
+                              title={
+                                slot.occupied
+                                  ? slot.owner === "mine"
+                                    ? `${aula.nombre_aula} reservada por ti ${slot.start} - ${slot.end}`
+                                    : slot.owner === "other"
+                                      ? `${aula.nombre_aula} reservada por otra persona ${slot.start} - ${slot.end}`
+                                      : `${aula.nombre_aula} ocupada ${slot.start} - ${slot.end}`
+                                  : `Reservar ${aula.nombre_aula} ${slot.start} - ${slot.end}`
+                              }
+                              onClick={() => !slot.occupied && openTimelineSlot(aula.id_aula, { start: slot.start, end: slot.end })}
+                            >
+                              <span>{slot.occupied || slot.selected ? slot.start : ""}</span>
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
                   ))}
