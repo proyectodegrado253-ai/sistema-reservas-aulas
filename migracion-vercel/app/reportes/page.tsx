@@ -39,7 +39,7 @@ export default function ReportesPage() {
 
     const { data, error } = await supabase
       .from("reservas")
-      .select("*, usuarios(nombre, apellido, email), aulas(nombre_aula, codigo_aula)")
+      .select("*, usuarios!fk_reservas_usuarios(nombre, apellido, email), aulas!fk_reservas_aulas(nombre_aula, codigo_aula)")
       .order("fecha_reserva", { ascending: false });
 
     if (error) {

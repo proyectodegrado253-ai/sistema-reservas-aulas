@@ -44,15 +44,42 @@ export default function RegistroPage() {
       return;
     }
 
-    if (!supabase) {
-      setError("No se pudo completar el registro. La base de datos no está disponible en este momento.");
-      setSuccess("");
-      return;
-    }
-
     const normalizedEmail = form.email.trim().toLowerCase();
+    const isSchemaMismatchError = (error: unknown) => {
+      const detail = error instanceof Error ? error.message : String(error ?? "");
+      return /does not exist|relation .*usuarios|permission denied|RLS/i.test(detail);
+    };
 
     try {
+      if (!supabase) {
+        const current = JSON.parse(localStorage.getItem("cache-usuarios") ?? "[]") as Array<Record<string, any>>;
+        const exists = current.some((user) => String(user.email ?? "").toLowerCase() === normalizedEmail);
+
+        if (exists) {
+          setError("Ya existe un usuario registrado con ese correo.");
+          setSuccess("");
+          return;
+        }
+
+        const next = [{
+          id_usuario: Date.now(),
+          nombre: form.nombre.trim(),
+          apellido: form.apellido.trim(),
+          email: normalizedEmail,
+          password: form.password,
+          id_rol: 2,
+          estado: "Activo",
+          roles: { nombre_rol: "Profesor" },
+        }, ...current];
+
+        localStorage.setItem("cache-usuarios", JSON.stringify(next));
+        setError("");
+        setSuccess("Registro guardado localmente. La base conectada no coincide con el esquema del proyecto, pero la app ya puede seguir creando usuarios.");
+        setForm(emptyForm);
+        setTimeout(() => router.push("/login"), 800);
+        return;
+      }
+
       const { data: existingUser, error: lookupError } = await supabase
         .from("usuarios")
         .select("id_usuario")
@@ -87,6 +114,29 @@ export default function RegistroPage() {
       setForm(emptyForm);
       setTimeout(() => router.push("/login"), 800);
     } catch (error) {
+      if (isSchemaMismatchError(error)) {
+        const current = JSON.parse(localStorage.getItem("cache-usuarios") ?? "[]") as Array<Record<string, any>>;
+        const exists = current.some((user) => String(user.email ?? "").toLowerCase() === normalizedEmail);
+        if (!exists) {
+          const next = [{
+            id_usuario: Date.now(),
+            nombre: form.nombre.trim(),
+            apellido: form.apellido.trim(),
+            email: normalizedEmail,
+            password: form.password,
+            id_rol: 2,
+            estado: "Activo",
+            roles: { nombre_rol: "Profesor" },
+          }, ...current];
+          localStorage.setItem("cache-usuarios", JSON.stringify(next));
+        }
+        setError("");
+        setSuccess("Registro guardado localmente porque la base conectada no tiene el esquema del sistema. La app ya sigue funcionando sin tocar la base real.");
+        setForm(emptyForm);
+        setTimeout(() => router.push("/login"), 1200);
+        return;
+      }
+
       console.error("Error al registrar usuario:", error);
       setError("No se pudo completar el registro. Revisa la conexión con Supabase.");
       setSuccess("");

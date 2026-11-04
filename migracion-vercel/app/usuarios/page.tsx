@@ -1,5 +1,6 @@
 "use client";
 
+import ActionMenu from "@/components/action-menu";
 import RoleSidebar from "@/components/role-sidebar";
 import { isAdminSession } from "@/lib/auth";
 import { useRouter } from "next/navigation";
@@ -55,17 +56,19 @@ export default function UsuariosPage() {
   const normalizeText = (value: string | null | undefined) =>
     (value ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
 
+  const isSchemaMismatchError = (error: unknown) => {
+    const detail = error instanceof Error ? error.message : String(error ?? "");
+    return /does not exist|relation .*usuarios|relation .*aulas|permission denied|RLS/i.test(detail);
+  };
+
   const loadData = async () => {
     const savedUsuarios = JSON.parse(localStorage.getItem("cache-usuarios") ?? "null") as UsuarioRecord[] | null;
     const savedRoles = JSON.parse(localStorage.getItem("cache-roles") ?? "null") as Array<{ id_rol: number; nombre_rol: string }> | null;
 
     if (!supabase) {
-      const finalRoles = savedRoles?.length ? savedRoles : [{ id_rol: 1, nombre_rol: "Superadministrador" }, { id_rol: 2, nombre_rol: "Profesor" }];
-      const finalUsuarios = savedUsuarios?.length ? savedUsuarios : fallbackUsuarios;
-      localStorage.setItem("cache-roles", JSON.stringify(finalRoles));
-      localStorage.setItem("cache-usuarios", JSON.stringify(finalUsuarios));
-      setRoles(finalRoles);
-      setUsuarios(finalUsuarios);
+      setRoles([]);
+      setUsuarios([]);
+      setMessage("Supabase no está configurado. No se pueden cargar usuarios reales sin SUPABASE_URL y SUPABASE_ANON_KEY (o las variables NEXT_PUBLIC_* si aplica).");
       return;
     }
 
@@ -81,20 +84,26 @@ export default function UsuariosPage() {
 
       const nextRoles = (rolesResult.data as Array<{ id_rol: number; nombre_rol: string }> | null)?.length
         ? (rolesResult.data as Array<{ id_rol: number; nombre_rol: string }>)
-        : [{ id_rol: 1, nombre_rol: "Superadministrador" }, { id_rol: 2, nombre_rol: "Profesor" }];
-      const nextUsuarios = (usuariosResult.data as UsuarioRecord[] | null)?.length ? (usuariosResult.data as UsuarioRecord[]) : fallbackUsuarios;
+        : [];
+      const nextUsuarios = (usuariosResult.data as UsuarioRecord[] | null)?.length ? (usuariosResult.data as UsuarioRecord[]) : [];
 
       localStorage.setItem("cache-roles", JSON.stringify(nextRoles));
       localStorage.setItem("cache-usuarios", JSON.stringify(nextUsuarios));
       setRoles(nextRoles);
       setUsuarios(nextUsuarios);
     } catch (error) {
-      const fallbackRoles = savedRoles?.length ? savedRoles : [{ id_rol: 1, nombre_rol: "Superadministrador" }, { id_rol: 2, nombre_rol: "Profesor" }];
-      const fallbackData = savedUsuarios?.length ? savedUsuarios : fallbackUsuarios;
-      localStorage.setItem("cache-roles", JSON.stringify(fallbackRoles));
-      localStorage.setItem("cache-usuarios", JSON.stringify(fallbackData));
-      setRoles(fallbackRoles);
-      setUsuarios(fallbackData);
+      if (isSchemaMismatchError(error)) {
+        const fallbackRoles = (JSON.parse(localStorage.getItem("cache-roles") ?? "[]") as Array<{ id_rol: number; nombre_rol: string }>);
+        const fallbackUsuarios = (JSON.parse(localStorage.getItem("cache-usuarios") ?? "[]") as UsuarioRecord[]);
+        setRoles(fallbackRoles.length ? fallbackRoles : [{ id_rol: 1, nombre_rol: "Superadministrador" }, { id_rol: 2, nombre_rol: "Profesor" }]);
+        setUsuarios(fallbackUsuarios.length ? fallbackUsuarios : fallbackUsuarios);
+        setMessage("La base conectada no coincide con el esquema esperado; se está usando la caché local para que la gestión siga funcionando sin tocar la base real.");
+        return;
+      }
+
+      setRoles([]);
+      setUsuarios([]);
+      setMessage("No se pudo cargar la información de usuarios desde Supabase. Revisa la conexión y la base de datos.");
       console.warn("Fallo en Supabase para usuarios.", error);
     }
   };
@@ -156,14 +165,27 @@ export default function UsuariosPage() {
         localStorage.setItem("cache-usuarios", JSON.stringify(updated));
         setUsuarios(updated);
       } else {
-        if (form.id_usuario) {
-          const { error } = await supabase.from("usuarios").update(payload).eq("id_usuario", form.id_usuario);
-          if (error) throw error;
-        } else {
-          const { error } = await supabase.from("usuarios").insert(payload);
-          if (error) throw error;
+        try {
+          if (form.id_usuario) {
+            const { error } = await supabase.from("usuarios").update(payload).eq("id_usuario", form.id_usuario);
+            if (error) throw error;
+          } else {
+            const { error } = await supabase.from("usuarios").insert(payload);
+            if (error) throw error;
+          }
+          await loadData();
+        } catch (dbError) {
+          if (!isSchemaMismatchError(dbError)) {
+            throw dbError;
+          }
+
+          const current = JSON.parse(localStorage.getItem("cache-usuarios") ?? "[]") as UsuarioRecord[];
+          const updated = form.id_usuario
+            ? current.map((item) => (item.id_usuario === form.id_usuario ? { ...item, ...payload, id_usuario: item.id_usuario, roles: { nombre_rol: Number(form.id_rol) === 1 ? "Superadministrador" : "Profesor" } } : item))
+            : [{ ...payload, id_usuario: Date.now(), roles: { nombre_rol: Number(form.id_rol) === 1 ? "Superadministrador" : "Profesor" } }, ...current];
+          localStorage.setItem("cache-usuarios", JSON.stringify(updated));
+          setUsuarios(updated);
         }
-        await loadData();
       }
 
       setMessage(form.id_usuario ? "Usuario actualizado correctamente." : "Usuario registrado correctamente.");
@@ -202,9 +224,19 @@ export default function UsuariosPage() {
         localStorage.setItem("cache-usuarios", JSON.stringify(updated));
         setUsuarios(updated);
       } else {
-        const { error } = await supabase.from("usuarios").delete().eq("id_usuario", id_usuario);
-        if (error) throw error;
-        await loadData();
+        try {
+          const { error } = await supabase.from("usuarios").delete().eq("id_usuario", id_usuario);
+          if (error) throw error;
+          await loadData();
+        } catch (dbError) {
+          if (!isSchemaMismatchError(dbError)) {
+            throw dbError;
+          }
+          const current = JSON.parse(localStorage.getItem("cache-usuarios") ?? "[]") as UsuarioRecord[];
+          const updated = current.filter((item) => item.id_usuario !== id_usuario);
+          localStorage.setItem("cache-usuarios", JSON.stringify(updated));
+          setUsuarios(updated);
+        }
       }
       setMessage("Usuario eliminado correctamente.");
     } catch (error) {
@@ -337,10 +369,12 @@ export default function UsuariosPage() {
                       <td>{usuario.roles?.nombre_rol ?? (usuario.id_rol === 1 ? "Superadministrador" : "Profesor")}</td>
                       <td><span className={`status ${usuario.estado === "Activo" ? "aprobada" : "pendiente"}`}>{usuario.estado}</span></td>
                       <td>
-                        <div className="inline-actions">
-                          <button type="button" className="ghost-button" onClick={() => handleEdit(usuario)}>Editar</button>
-                          <button type="button" className="ghost-button danger" onClick={() => handleDeleteUsuario(usuario.id_usuario)}>Eliminar</button>
-                        </div>
+                        <ActionMenu
+                          items={[
+                            { label: "Editar", onClick: () => handleEdit(usuario) },
+                            { label: "Eliminar", variant: "danger", onClick: () => handleDeleteUsuario(usuario.id_usuario) },
+                          ]}
+                        />
                       </td>
                     </tr>
                   ))}

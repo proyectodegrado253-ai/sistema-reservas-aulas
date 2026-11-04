@@ -51,6 +51,27 @@ export function overlaps(startA, endA, startB, endB) {
   return getMinutes(startA) < getMinutes(endB) && getMinutes(endA) > getMinutes(startB);
 }
 
+export function buildHourSlots({ startHour = 6, endHour = 22, stepMinutes = 60 } = {}) {
+  const slots = [];
+
+  for (let hour = startHour; hour < endHour; hour += stepMinutes / 60) {
+    const start = `${String(hour).padStart(2, '0')}:00`;
+    const nextHour = hour + stepMinutes / 60;
+    const end = `${String(nextHour).padStart(2, '0')}:00`;
+    slots.push({ start, end, label: `${start} - ${end}` });
+  }
+
+  return slots;
+}
+
+export function isRangeOccupiedByReservation({ reservation, start, end }) {
+  if (!reservation || !start || !end) {
+    return false;
+  }
+
+  return overlaps(start, end, reservation.hora_inicio, reservation.hora_fin);
+}
+
 /**
  * @param {ReservationValidationOptions} options
  * @returns {{ valid: boolean, message: string }}

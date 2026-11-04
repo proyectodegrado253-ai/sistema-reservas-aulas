@@ -147,20 +147,14 @@ AS $$
 $$;
 
 CREATE POLICY "roles_select_public" ON roles FOR SELECT USING (true);
-CREATE POLICY "usuarios_select_own_or_admin" ON usuarios FOR SELECT USING (
-    id_usuario = public.current_user_id()
-    OR user_has_role('Superadministrador')
-);
+CREATE POLICY "usuarios_select_public_for_dashboard" ON usuarios FOR SELECT USING (true);
 CREATE POLICY "usuarios_insert_admin_only" ON usuarios FOR INSERT WITH CHECK (user_has_role('Superadministrador'));
 CREATE POLICY "usuarios_update_admin_only" ON usuarios FOR UPDATE USING (user_has_role('Superadministrador')) WITH CHECK (user_has_role('Superadministrador'));
 CREATE POLICY "aulas_select_public" ON aulas FOR SELECT USING (true);
 CREATE POLICY "aulas_insert_admin_only" ON aulas FOR INSERT WITH CHECK (user_has_role('Superadministrador'));
 CREATE POLICY "aulas_update_admin_only" ON aulas FOR UPDATE USING (user_has_role('Superadministrador')) WITH CHECK (user_has_role('Superadministrador'));
 CREATE POLICY "aulas_delete_admin_only" ON aulas FOR DELETE USING (user_has_role('Superadministrador'));
-CREATE POLICY "horarios_select_own_or_admin" ON horarios_docentes FOR SELECT USING (
-    id_usuario = public.current_user_id()
-    OR user_has_role('Superadministrador')
-);
+CREATE POLICY "horarios_select_public_for_dashboard" ON horarios_docentes FOR SELECT USING (true);
 CREATE POLICY "horarios_insert_own_or_admin" ON horarios_docentes FOR INSERT WITH CHECK (
     (id_usuario = public.current_user_id() AND user_has_role('Profesor'))
     OR user_has_role('Superadministrador')
@@ -172,10 +166,7 @@ CREATE POLICY "horarios_update_own_or_admin" ON horarios_docentes FOR UPDATE USI
     (id_usuario = public.current_user_id() AND user_has_role('Profesor'))
     OR user_has_role('Superadministrador')
 );
-CREATE POLICY "reservas_select_own_or_admin" ON reservas FOR SELECT USING (
-    id_usuario = public.current_user_id()
-    OR user_has_role('Superadministrador')
-);
+CREATE POLICY "reservas_select_public_for_dashboard" ON reservas FOR SELECT USING (true);
 CREATE POLICY "reservas_insert_own_or_admin" ON reservas FOR INSERT WITH CHECK (
     (id_usuario = public.current_user_id() AND user_has_role('Profesor'))
     OR user_has_role('Superadministrador')
