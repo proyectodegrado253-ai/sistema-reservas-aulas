@@ -29,6 +29,12 @@ export default function RegistroPage() {
     setForm((current) => ({ ...current, [field]: value }));
   };
 
+  const hashPassword = async (value: string) => {
+    const bytes = new TextEncoder().encode(value);
+    const hash = await crypto.subtle.digest("SHA-256", bytes);
+    return Array.from(new Uint8Array(hash)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -61,12 +67,13 @@ export default function RegistroPage() {
           return;
         }
 
+        const hashedPassword = await hashPassword(form.password);
         const next = [{
           id_usuario: Date.now(),
           nombre: form.nombre.trim(),
           apellido: form.apellido.trim(),
           email: normalizedEmail,
-          password: form.password,
+          password: hashedPassword,
           id_rol: 2,
           estado: "Activo",
           roles: { nombre_rol: "Profesor" },
@@ -96,11 +103,12 @@ export default function RegistroPage() {
         return;
       }
 
+      const hashedPassword = await hashPassword(form.password);
       const { error: insertError } = await supabase.from("usuarios").insert({
         nombre: form.nombre.trim(),
         apellido: form.apellido.trim(),
         email: normalizedEmail,
-        password: form.password,
+        password: hashedPassword,
         id_rol: 2,
         estado: "Activo",
       });
@@ -118,12 +126,13 @@ export default function RegistroPage() {
         const current = JSON.parse(localStorage.getItem("cache-usuarios") ?? "[]") as Array<Record<string, any>>;
         const exists = current.some((user) => String(user.email ?? "").toLowerCase() === normalizedEmail);
         if (!exists) {
+          const hashedPassword = await hashPassword(form.password);
           const next = [{
             id_usuario: Date.now(),
             nombre: form.nombre.trim(),
             apellido: form.apellido.trim(),
             email: normalizedEmail,
-            password: form.password,
+            password: hashedPassword,
             id_rol: 2,
             estado: "Activo",
             roles: { nombre_rol: "Profesor" },

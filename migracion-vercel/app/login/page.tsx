@@ -10,6 +10,16 @@ import { getSupabaseStatus, supabase } from "@/lib/supabase";
 const getRoleName = (idRol: number | null | undefined) =>
   idRol === 1 ? "Superadministrador" : "Profesor";
 
+const hashPassword = async (value: string) => {
+  if (!value) {
+    return "";
+  }
+
+  const bytes = new TextEncoder().encode(value);
+  const hash = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(hash)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+};
+
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("admin@sistema.com");
@@ -67,7 +77,10 @@ export default function LoginPage() {
         throw dbError;
       }
 
-      if (!data || data.password !== password) {
+      const hashedPassword = await hashPassword(password);
+      const passwordMatches = data && (data.password === password || data.password === hashedPassword);
+
+      if (!data || !passwordMatches) {
         setError("Credenciales inválidas. Verifica el correo y la contraseña.");
         return;
       }

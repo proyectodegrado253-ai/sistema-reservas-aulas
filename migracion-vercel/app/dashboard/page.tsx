@@ -95,7 +95,7 @@ export default function DashboardPage() {
     reason: null,
   });
 
-  const timelineSlots = useMemo(() => buildHourSlots({ startHour: 7, endHour: 18, stepMinutes: 60 }), []);
+  const timelineSlots = useMemo(() => buildHourSlots({ startHour: 6, endHour: 18, stepMinutes: 60 }), []);
 
   const loadDashboardData = async () => {
     const client = supabase;

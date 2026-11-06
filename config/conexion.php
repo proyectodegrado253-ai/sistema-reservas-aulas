@@ -92,6 +92,43 @@ function ensureAppSchema(PDO $pdo): void
     );
 
     $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS configuracion_reservas (
+            id_configuracion INT AUTO_INCREMENT PRIMARY KEY,
+            clave VARCHAR(100) NOT NULL UNIQUE,
+            valor VARCHAR(255) NOT NULL,
+            descripcion TEXT NULL,
+            activo TINYINT(1) NOT NULL DEFAULT 1,
+            fecha_actualizacion DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB'
+    );
+
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS excepciones_reservas (
+            id_excepcion INT AUTO_INCREMENT PRIMARY KEY,
+            fecha DATE NOT NULL,
+            hora_inicio TIME NULL,
+            hora_fin TIME NULL,
+            motivo VARCHAR(255) NOT NULL,
+            permitido TINYINT(1) NOT NULL DEFAULT 1,
+            creado_por INT NULL,
+            activo TINYINT(1) NOT NULL DEFAULT 1,
+            fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT fk_excepcion_usuario FOREIGN KEY (creado_por) REFERENCES usuarios(id_usuario) ON DELETE SET NULL ON UPDATE CASCADE,
+            UNIQUE KEY uq_excepcion_fecha (fecha, hora_inicio, hora_fin)
+        ) ENGINE=InnoDB'
+    );
+
+    $pdo->exec(
+        'INSERT INTO configuracion_reservas (clave, valor, descripcion, activo)
+         VALUES
+            ("jornada_inicio", "06:00", "Inicio permitido de la jornada institucional.", 1),
+            ("jornada_fin", "18:00", "Cierre permitido de la jornada institucional.", 1),
+            ("dias_normales", "Lunes,Martes,Miércoles,Jueves,Viernes", "Días laborables por defecto.", 1),
+            ("reservas_activas", "1", "Habilita la validación institucional de horarios y días.", 1)
+         ON DUPLICATE KEY UPDATE valor = VALUES(valor), descripcion = VALUES(descripcion), activo = VALUES(activo)'
+    );
+
+    $pdo->exec(
         'CREATE TABLE IF NOT EXISTS reservas (
             id_reserva INT AUTO_INCREMENT PRIMARY KEY,
             id_usuario INT NOT NULL,

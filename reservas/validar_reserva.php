@@ -20,10 +20,39 @@ function solapaHorario($inicio1, $fin1, $inicio2, $fin2)
     return $inicio1 < $fin2 && $inicio2 < $fin1;
 }
 
+function horarioInstitucionalPermitido(string $horaInicio, string $horaFin): bool
+{
+    $inicioPermitido = '06:00:00';
+    $finPermitido = '18:00:00';
+    return $horaInicio >= $inicioPermitido && $horaFin <= $finPermitido && $horaFin > $horaInicio;
+}
+
+function diaLaboralPermitido(string $fecha, PDO $pdo): bool
+{
+    $fechaNormalizada = date('Y-m-d', strtotime($fecha));
+    $numeroDia = (int) date('N', strtotime($fechaNormalizada));
+    if ($numeroDia >= 1 && $numeroDia <= 5) {
+        return true;
+    }
+
+    $stmt = $pdo->prepare('SELECT COUNT(*) FROM excepciones_reservas WHERE fecha = :fecha AND activo = 1 AND permitido = 1 LIMIT 1');
+    $stmt->execute([':fecha' => $fechaNormalizada]);
+
+    return (int) $stmt->fetchColumn() > 0;
+}
+
 function validarReserva(PDO $pdo, int $idUsuario, int $idAula, string $fechaReserva, string $horaInicio, string $horaFin): array
 {
     $fecha = date('Y-m-d', strtotime($fechaReserva));
     $diaSemana = obtenerNombreDia($fecha);
+
+    if (!horarioInstitucionalPermitido($horaInicio, $horaFin)) {
+        return ['ok' => false, 'mensaje' => 'La reserva debe quedar dentro del horario institucional autorizado: 06:00 a 18:00.'];
+    }
+
+    if (!diaLaboralPermitido($fecha, $pdo)) {
+        return ['ok' => false, 'mensaje' => 'Las reservas ordinarias solo están permitidas de lunes a viernes. Los sábados y domingos requieren una excepción autorizada por administración.'];
+    }
 
     $aulaStmt = $pdo->prepare(
         'SELECT id_aula, estado FROM aulas WHERE id_aula = :id_aula LIMIT 1'

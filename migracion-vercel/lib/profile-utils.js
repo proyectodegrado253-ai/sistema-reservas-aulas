@@ -1,16 +1,16 @@
-const DEFAULT_AVATAR = "/default-avatar.svg";
+export const DEFAULT_AVATAR = "/default-avatar.svg";
 
-function normalizeText(value) {
+export function normalizeText(value) {
   return String(value ?? "").trim();
 }
 
-function buildFullName(user) {
+export function buildFullName(user) {
   const nombre = normalizeText(user?.nombre);
   const apellido = normalizeText(user?.apellido);
   return [nombre, apellido].filter(Boolean).join(" ") || "Profesor";
 }
 
-function resolveAvatarUrl(value) {
+export function resolveAvatarUrl(value) {
   const normalized = normalizeText(value);
 
   if (!normalized) {
@@ -30,9 +30,15 @@ function resolveAvatarUrl(value) {
   return `/${withoutPrefix.replace(/^\/+/, "")}`;
 }
 
-module.exports = {
+const profileUtils = {
   DEFAULT_AVATAR,
   buildFullName,
   normalizeText,
   resolveAvatarUrl,
 };
+
+export default profileUtils;
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = profileUtils;
+}

@@ -6,10 +6,10 @@ import { isAdminSession, isProfessorSession } from "@/lib/auth";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { getSupabaseStatus, supabase } from "@/lib/supabase";
-import { appendAuditEntry, overlaps, validateAcademicReservation } from "@/lib/academic-rules";
+import { appendAuditEntry, getExceptionalDates, overlaps, validateAcademicReservation } from "@/lib/academic-rules";
 
-const timeSlots = Array.from({ length: 13 }, (_, index) => {
-  const startHour = 7 + index;
+const timeSlots = Array.from({ length: 12 }, (_, index) => {
+  const startHour = 6 + index;
   const start = `${String(startHour).padStart(2, "0")}:00`;
   const end = `${String(startHour + 1).padStart(2, "0")}:00`;
   return { start, end, label: `${start} - ${end}` };
@@ -86,6 +86,20 @@ const fallbackLocalData: ReservaRecord[] = [
     aulas: { codigo_aula: "LAB-2", nombre_aula: "Laboratorio 2" },
   },
 ];
+
+const readReservationHistory = () => {
+  try {
+    const rawValue = localStorage.getItem("cache-historial-reservas");
+    return rawValue ? JSON.parse(rawValue) : [];
+  } catch (error) {
+    console.warn("No se pudo leer el historial de reservas.", error);
+    return [];
+  }
+};
+
+const writeReservationHistory = (entries: Array<Record<string, any>>) => {
+  localStorage.setItem("cache-historial-reservas", JSON.stringify(entries.slice(0, 50)));
+};
 
 export default function ReservasPage() {
   const router = useRouter();
@@ -459,6 +473,11 @@ export default function ReservasPage() {
   };
 
   const handleEdit = (reserva: ReservaRecord) => {
+    if (!isAdmin && Number(reserva.id_usuario) !== Number(currentUserId)) {
+      setMessage("No puedes editar reservas de otra persona.");
+      return;
+    }
+
     setSelectedSlot({ start: reserva.hora_inicio, end: reserva.hora_fin });
     setForm({
       id_reserva: reserva.id_reserva,
@@ -472,6 +491,63 @@ export default function ReservasPage() {
     });
     setMessage("Editando reserva actual.");
     setShowCreateModal(true);
+  };
+
+  const handleCancelReservation = async (reserva: ReservaRecord) => {
+    if (!isAdmin && Number(reserva.id_usuario) !== Number(currentUserId)) {
+      setMessage("No puedes cancelar una reserva ajena.");
+      return;
+    }
+
+    const confirmed = window.confirm("¿Seguro que quieres cancelar esta reserva?");
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      const history = readReservationHistory();
+      const nextHistory = [{
+        id_reserva: reserva.id_reserva,
+        id_usuario_accion: Number(currentUserId || 0),
+        accion_realizada: "Cancelación",
+        estado_anterior: reserva.estado,
+        estado_nuevo: "Cancelada",
+        observaciones: `Reserva cancelada por ${currentUserName || "el docente"}`,
+        fecha_registro: new Date().toISOString(),
+      }, ...history].slice(0, 50);
+      writeReservationHistory(nextHistory);
+
+      if (supabase) {
+        const { error } = await supabase.from("reservas").update({ estado: "Cancelada" }).eq("id_reserva", reserva.id_reserva);
+        if (error) {
+          throw error;
+        }
+      } else {
+        const localReservas = JSON.parse(localStorage.getItem("cache-reservas") ?? "[]") as ReservaRecord[];
+        const updatedReservas = localReservas.map((item) => Number(item.id_reserva) === Number(reserva.id_reserva)
+          ? { ...item, estado: "Cancelada" }
+          : item,
+        );
+        localStorage.setItem("cache-reservas", JSON.stringify(updatedReservas));
+      }
+
+      appendAuditEntry({
+        action: "Cancelación de reserva",
+        summary: `Reserva ${reserva.id_reserva} cancelada por ${currentUserName}`,
+        userName: currentUserName,
+        userId: Number(currentUserId || reserva.id_usuario),
+        state: "Cancelada",
+        role: role ?? "Profesor",
+        date: new Date().toISOString(),
+      });
+
+      setMessage("Reserva cancelada correctamente.");
+      await loadData();
+      window.dispatchEvent(new Event("reservas-updated"));
+    } catch (error) {
+      console.error("Error cancelando la reserva:", error);
+      setMessage("No se pudo cancelar la reserva. Revisa la conexión y permisos del sistema.");
+    }
   };
 
   useEffect(() => {
@@ -550,9 +626,16 @@ export default function ReservasPage() {
                           </span>
                         </td>
                         <td>
-                          <button type="button" className="history-detail-button" onClick={() => handleEdit(reserva)}>
-                            Detalles
-                          </button>
+                          <div className="action-stack">
+                            <button type="button" className="history-detail-button" onClick={() => handleEdit(reserva)}>
+                              Editar
+                            </button>
+                            {reserva.estado !== "Cancelada" ? (
+                              <button type="button" className="history-detail-button danger-button" onClick={() => void handleCancelReservation(reserva)}>
+                                Cancelar
+                              </button>
+                            ) : null}
+                          </div>
                         </td>
                       </tr>
                     );

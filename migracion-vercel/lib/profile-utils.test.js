@@ -1,7 +1,7 @@
-const test = require('node:test');
-const assert = require('node:assert/strict');
+import test from 'node:test';
+import assert from 'node:assert/strict';
 
-const { resolveAvatarUrl, buildFullName } = require('./profile-utils.js');
+import { resolveAvatarUrl, buildFullName } from './profile-utils.js';
 
 test('buildFullName returns the user full name from the stored fields', () => {
   assert.equal(buildFullName({ nombre: 'Ana', apellido: 'García' }), 'Ana García');

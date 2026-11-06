@@ -101,6 +101,28 @@ CREATE TABLE bitacora_actividad (
     CONSTRAINT fk_bitacora_actividad_usuarios FOREIGN KEY (id_usuario) REFERENCES usuarios(id_usuario) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
+CREATE TABLE configuracion_reservas (
+    id_configuracion INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    hora_inicio TIME NOT NULL DEFAULT '06:00',
+    hora_fin TIME NOT NULL DEFAULT '18:00',
+    dias_habilitados VARCHAR(50) NOT NULL DEFAULT 'Lunes,Martes,Miércoles,Jueves,Viernes',
+    requiere_aprobacion BOOLEAN NOT NULL DEFAULT TRUE,
+    actualizado_por INT,
+    fecha_actualizacion TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT fk_configuracion_reservas_usuario FOREIGN KEY (actualizado_por) REFERENCES usuarios(id_usuario) ON DELETE SET NULL ON UPDATE CASCADE
+);
+
+CREATE TABLE excepciones_reservas (
+    id_excepcion INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    fecha DATE NOT NULL UNIQUE,
+    motivo TEXT,
+    permitido BOOLEAN NOT NULL DEFAULT FALSE,
+    activo BOOLEAN NOT NULL DEFAULT TRUE,
+    creado_por INT,
+    fecha_creacion TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT fk_excepciones_reservas_usuario FOREIGN KEY (creado_por) REFERENCES usuarios(id_usuario) ON DELETE SET NULL ON UPDATE CASCADE
+);
+
 ALTER TABLE roles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE usuarios ENABLE ROW LEVEL SECURITY;
 ALTER TABLE aulas ENABLE ROW LEVEL SECURITY;
@@ -188,6 +210,12 @@ CREATE POLICY "bitacora_insert_own_or_admin" ON bitacora_actividad FOR INSERT WI
     id_usuario = public.current_user_id()
     OR user_has_role('Superadministrador')
 );
+CREATE POLICY "configuracion_select_public" ON configuracion_reservas FOR SELECT USING (true);
+CREATE POLICY "configuracion_update_admin_only" ON configuracion_reservas FOR UPDATE USING (user_has_role('Superadministrador')) WITH CHECK (user_has_role('Superadministrador'));
+CREATE POLICY "configuracion_insert_admin_only" ON configuracion_reservas FOR INSERT WITH CHECK (user_has_role('Superadministrador'));
+CREATE POLICY "excepciones_select_public" ON excepciones_reservas FOR SELECT USING (true);
+CREATE POLICY "excepciones_update_admin_only" ON excepciones_reservas FOR UPDATE USING (user_has_role('Superadministrador')) WITH CHECK (user_has_role('Superadministrador'));
+CREATE POLICY "excepciones_insert_admin_only" ON excepciones_reservas FOR INSERT WITH CHECK (user_has_role('Superadministrador'));
 
 CREATE UNIQUE INDEX idx_usuarios_email_lower_unique ON usuarios (LOWER(email));
 CREATE INDEX idx_usuarios_email ON usuarios(email);
@@ -210,6 +238,10 @@ VALUES (
     1,
     'Activo'
 );
+
+INSERT INTO configuracion_reservas (hora_inicio, hora_fin, dias_habilitados, requiere_aprobacion)
+VALUES ('06:00', '18:00', 'Lunes,Martes,Miércoles,Jueves,Viernes', TRUE)
+ON CONFLICT DO NOTHING;
 
 -- Contraseña por defecto: admin123
 

@@ -36,12 +36,25 @@ const splitFullName = (fullName: string) => {
   return { nombre, apellido };
 };
 
+const hashPassword = async (password: string) => {
+  if (!password) {
+    return "";
+  }
+
+  const bytes = new TextEncoder().encode(password);
+  const hash = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(hash)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+};
+
 export default function PerfilPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [role, setRole] = useState("Profesor");
   const [email, setEmail] = useState("profesor@sistema.com");
   const [nombre, setNombre] = useState("Profesor Asignado");
   const [telefono, setTelefono] = useState("");
+  const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState(DEFAULT_AVATAR);
   const [guardado, setGuardado] = useState("");
   const [error, setError] = useState("");
@@ -140,19 +153,38 @@ export default function PerfilPage() {
     const { nombre: firstName, apellido: lastName } = splitFullName(nextName || "Profesor");
     const nextTelefono = telefono.trim();
 
+    if (password && password.length < 6) {
+      setError("La nueva contraseña debe tener al menos 6 caracteres.");
+      setSaving(false);
+      return;
+    }
+
+    if (password && password !== passwordConfirm) {
+      setError("La confirmación de la contraseña no coincide.");
+      setSaving(false);
+      return;
+    }
+
     try {
       const savedUsers = getStoredUsers();
       const currentUser = savedUsers.find((user) => Number(user.id_usuario) === Number(userId));
+      const nextPasswordHash = password ? await hashPassword(password) : currentUser?.password ?? "";
 
       if (supabase && userId) {
+        const updates: Record<string, string | number | null> = {
+          nombre: firstName,
+          apellido: lastName,
+          cc: nextTelefono || null,
+          avatar: resolveAvatarUrl(avatarPreview),
+        };
+
+        if (password) {
+          updates.password = nextPasswordHash;
+        }
+
         const { error: updateError } = await supabase
           .from("usuarios")
-          .update({
-            nombre: firstName,
-            apellido: lastName,
-            cc: nextTelefono || null,
-            avatar: resolveAvatarUrl(avatarPreview),
-          })
+          .update(updates)
           .eq("id_usuario", userId);
 
         if (updateError) throw updateError;
@@ -166,6 +198,7 @@ export default function PerfilPage() {
           apellido: lastName,
           cc: nextTelefono || user.cc || null,
           avatar: resolveAvatarUrl(avatarPreview),
+          password: password ? nextPasswordHash : user.password || "",
         };
       });
 
@@ -177,13 +210,16 @@ export default function PerfilPage() {
           email,
           cc: nextTelefono || null,
           avatar: resolveAvatarUrl(avatarPreview),
+          password: password ? nextPasswordHash : "",
         });
       }
 
       localStorage.setItem("cache-usuarios", JSON.stringify(updatedUsers));
       persistSessionData(nextName || "Profesor", resolveAvatarUrl(avatarPreview));
+      setPassword("");
+      setPasswordConfirm("");
 
-      setGuardado("Perfil actualizado correctamente.");
+      setGuardado(password ? "Perfil y contraseña actualizados correctamente." : "Perfil actualizado correctamente.");
     } catch (saveError) {
       console.error("Error al guardar el perfil:", saveError);
       setError("No se pudo guardar el perfil. Inténtalo de nuevo.");
@@ -248,6 +284,26 @@ export default function PerfilPage() {
                 <label>
                   Teléfono
                   <input value={telefono} onChange={(event) => setTelefono(event.target.value)} placeholder="+56 9 1234 5678" />
+                </label>
+
+                <label>
+                  Nueva contraseña
+                  <div className="password-field">
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                      placeholder="Dejar vacío para no cambiarla"
+                    />
+                    <button type="button" className="password-toggle" aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"} onClick={() => setShowPassword((value) => !value)}>
+                      {showPassword ? "◉" : "◌"}
+                    </button>
+                  </div>
+                </label>
+
+                <label>
+                  Confirmar contraseña
+                  <input type={showPassword ? "text" : "password"} value={passwordConfirm} onChange={(event) => setPasswordConfirm(event.target.value)} placeholder="Repite la nueva contraseña" />
                 </label>
 
                 <label>

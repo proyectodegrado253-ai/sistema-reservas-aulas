@@ -3,6 +3,7 @@
 import RoleSidebar from "@/components/role-sidebar";
 import { isAdminSession } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
+import { getExceptionalDates, getInstitutionalConfig, saveExceptionalDates, saveInstitutionalConfig } from "@/lib/academic-rules";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
@@ -123,6 +124,9 @@ export default function AdminPage() {
   const [aulas, setAulas] = useState<Array<Record<string, any>>>([]);
   const [reservas, setReservas] = useState<ReservationRecord[]>([]);
   const [weekDates, setWeekDates] = useState<Array<{ key: string; label: string }>>([]);
+  const [institutionConfig, setInstitutionConfig] = useState({ startHour: "06:00", endHour: "18:00", weekdays: ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"], requireApproval: true });
+  const [exceptionDates, setExceptionDates] = useState<string[]>([]);
+  const [newExceptionDate, setNewExceptionDate] = useState("");
 
   const roomMatrix = useMemo(() => buildRoomMatrix(aulas, reservas, weekDates), [aulas, reservas, weekDates]);
 
@@ -220,6 +224,67 @@ export default function AdminPage() {
     }
   };
 
+  const persistInstitutionalConfig = async () => {
+    const nextConfig = saveInstitutionalConfig(institutionConfig);
+    setInstitutionConfig(nextConfig);
+    setMessage("Configuración institucional guardada correctamente.");
+
+    if (supabase) {
+      const { data, error } = await supabase.from("configuracion_reservas").select("id_configuracion").maybeSingle();
+      if (!error) {
+        if (data) {
+          await supabase.from("configuracion_reservas").update({
+            hora_inicio: nextConfig.startHour,
+            hora_fin: nextConfig.endHour,
+            dias_habilitados: nextConfig.weekdays.join(","),
+            requiere_aprobacion: nextConfig.requireApproval,
+            actualizado_por: 1,
+          }).eq("id_configuracion", data.id_configuracion);
+        } else {
+          await supabase.from("configuracion_reservas").insert({
+            hora_inicio: nextConfig.startHour,
+            hora_fin: nextConfig.endHour,
+            dias_habilitados: nextConfig.weekdays.join(","),
+            requiere_aprobacion: nextConfig.requireApproval,
+            actualizado_por: 1,
+          });
+        }
+      }
+    }
+  };
+
+  const addExceptionDate = async () => {
+    if (!newExceptionDate) {
+      setError("Debes seleccionar una fecha para autorizarla.");
+      return;
+    }
+
+    const nextDates = saveExceptionalDates([...exceptionDates, newExceptionDate]);
+    setExceptionDates(nextDates);
+    setNewExceptionDate("");
+    setMessage("Fecha extraordinaria autorizada correctamente.");
+
+    if (supabase) {
+      await supabase.from("excepciones_reservas").upsert({
+        fecha: newExceptionDate,
+        motivo: "Autorizada desde panel administrativo",
+        permitido: true,
+        activo: true,
+        creado_por: 1,
+      }, { onConflict: "fecha" });
+    }
+  };
+
+  const removeExceptionDate = async (dateToRemove: string) => {
+    const nextDates = saveExceptionalDates(exceptionDates.filter((date) => date !== dateToRemove));
+    setExceptionDates(nextDates);
+    setMessage("Se retiró la autorización extraordinaria de esa fecha.");
+
+    if (supabase) {
+      await supabase.from("excepciones_reservas").update({ activo: false, permitido: false }).eq("fecha", dateToRemove);
+    }
+  };
+
   const exportReport = async (scope: "usuarios" | "aulas" | "reservas" | "horarios", format: "csv" | "pdf") => {
     const filename = `${scope}.${format}`;
 
@@ -263,6 +328,8 @@ export default function AdminPage() {
     }
 
     setEmail(sessionEmail || "");
+    setInstitutionConfig(getInstitutionalConfig());
+    setExceptionDates(getExceptionalDates());
     setWeekDates(getCurrentWeekDates());
     void loadStats();
 
@@ -450,6 +517,87 @@ export default function AdminPage() {
                 </div>
               </article>
             </div>
+
+            <article className="info-card admin-card compact-info-card">
+              <div className="section-header">
+                <h3>Configuración institucional</h3>
+                <span>Horario / excepciones</span>
+              </div>
+
+              <div className="admin-settings-grid">
+                <label>
+                  Hora de inicio
+                  <input type="time" value={institutionConfig.startHour} onChange={(event) => setInstitutionConfig((current) => ({ ...current, startHour: event.target.value }))} />
+                </label>
+
+                <label>
+                  Hora de fin
+                  <input type="time" value={institutionConfig.endHour} onChange={(event) => setInstitutionConfig((current) => ({ ...current, endHour: event.target.value }))} />
+                </label>
+
+                <label className="full-width">
+                  Días habilitados
+                  <div className="weekday-chips">
+                    {['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'].map((day) => {
+                      const checked = institutionConfig.weekdays.includes(day);
+                      return (
+                        <label key={day} className="chip-toggle">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => {
+                              setInstitutionConfig((current) => {
+                                const nextDays = checked
+                                  ? current.weekdays.filter((entry) => entry !== day)
+                                  : [...current.weekdays, day];
+                                return { ...current, weekdays: nextDays };
+                              });
+                            }}
+                          />
+                          <span>{day}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </label>
+
+                <label className="checkbox-line full-width">
+                  <input
+                    type="checkbox"
+                    checked={institutionConfig.requireApproval}
+                    onChange={(event) => setInstitutionConfig((current) => ({ ...current, requireApproval: event.target.checked }))}
+                  />
+                  <span>Requiere aprobación administrativa para fechas extraordinarias y fines de semana.</span>
+                </label>
+              </div>
+
+              <div className="config-actions">
+                <button type="button" className="primary-button" onClick={() => void persistInstitutionalConfig()}>Guardar configuración</button>
+              </div>
+
+              <div className="exception-admin-block">
+                <label>
+                  Autorizar fecha extraordinaria
+                  <div className="inline-date-row">
+                    <input type="date" value={newExceptionDate} onChange={(event) => setNewExceptionDate(event.target.value)} />
+                    <button type="button" className="primary-button" onClick={() => void addExceptionDate()}>Autorizar</button>
+                  </div>
+                </label>
+
+                {exceptionDates.length ? (
+                  <div className="exception-list">
+                    {exceptionDates.map((date) => (
+                      <div key={date} className="exception-item">
+                        <span>{date}</span>
+                        <button type="button" className="secondary-button" onClick={() => void removeExceptionDate(date)}>Quitar</button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="empty-cell">No hay fechas extraordinarias autorizadas.</p>
+                )}
+              </div>
+            </article>
 
             <article className="info-card export-panel compact-info-card">
               <div className="section-header export-header">

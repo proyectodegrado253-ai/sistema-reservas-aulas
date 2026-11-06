@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildHourSlots, isRangeOccupiedByReservation, validateAcademicReservation } from './academic-rules.js';
+import {
+  buildHourSlots,
+  isRangeOccupiedByReservation,
+  isSchoolDayAllowed,
+  isReservationWindowAllowed,
+  validateAcademicReservation,
+} from './academic-rules.js';
 
 test('genera franjas horarias de 1 hora', () => {
   const slots = buildHourSlots({ startHour: 6, endHour: 10, stepMinutes: 60 });
@@ -63,3 +69,60 @@ test('acepta reservas no solapadas', () => {
 
   assert.equal(result.valid, true);
 });
+
+test('rechaza reservas fuera del horario institucional permitido', () => {
+  const result = validateAcademicReservation({
+    reservations: [],
+    selectedUserId: 5,
+    selectedAulaId: 3,
+    fecha: '2026-10-14',
+    horaInicio: '05:30',
+    horaFin: '06:30',
+  });
+
+  assert.equal(result.valid, false);
+  assert.match(result.message, /horario|06:00|18:00/i);
+});
+
+test('rechaza reservas de fin de semana sin excepcion administrativa', () => {
+  const result = validateAcademicReservation({
+    reservations: [],
+    selectedUserId: 5,
+    selectedAulaId: 3,
+    fecha: '2026-10-18',
+    horaInicio: '09:00',
+    horaFin: '11:00',
+  });
+
+  assert.equal(result.valid, false);
+  assert.match(result.message, /lunes|viernes|sábado|domingo|excepcion/i);
+});
+
+test('acepta un día extraordinario cuando existe autorización administrativa', () => {
+  const result = validateAcademicReservation({
+    reservations: [],
+    selectedUserId: 5,
+    selectedAulaId: 3,
+    fecha: '2026-10-18',
+    horaInicio: '09:00',
+    horaFin: '11:00',
+    exceptionalDates: ['2026-10-18'],
+  });
+
+  assert.equal(result.valid, true);
+});
+
+test('genera únicamente franjas dentro del horario institucional', () => {
+  const slots = buildHourSlots();
+  const first = slots[0];
+  const last = slots[slots.length - 1];
+
+  assert.equal(first.start, '06:00');
+  assert.equal(last.end, '18:00');
+  assert.ok(slots.every((slot) => getMinutes(slot.start) >= 360 && getMinutes(slot.end) <= 1080));
+});
+
+function getMinutes(value) {
+  const [hours, minutes] = value.split(':').map(Number);
+  return hours * 60 + minutes;
+}

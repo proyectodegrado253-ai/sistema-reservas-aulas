@@ -19,6 +19,7 @@
  *   horaInicio?: string;
  *   horaFin?: string;
  *   currentReservationId?: number | null;
+ *   exceptionalDates?: string[];
  * }} ReservationValidationOptions
  */
 
@@ -34,6 +35,91 @@
  * }} AuditEntryOptions
  */
 
+export const SCHOOL_RESERVATION_WINDOW = {
+  start: '06:00',
+  end: '18:00',
+  allowedWeekdays: ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'],
+};
+
+export function getInstitutionalConfig() {
+  const defaultConfig = {
+    startHour: SCHOOL_RESERVATION_WINDOW.start,
+    endHour: SCHOOL_RESERVATION_WINDOW.end,
+    weekdays: [...SCHOOL_RESERVATION_WINDOW.allowedWeekdays],
+    requireApproval: true,
+  };
+
+  if (typeof window === 'undefined') {
+    return defaultConfig;
+  }
+
+  try {
+    const rawConfig = localStorage.getItem('config-reservas');
+    if (!rawConfig) {
+      return defaultConfig;
+    }
+
+    const parsedConfig = JSON.parse(rawConfig);
+    return {
+      ...defaultConfig,
+      ...parsedConfig,
+      weekdays: Array.isArray(parsedConfig?.weekdays) && parsedConfig.weekdays.length
+        ? parsedConfig.weekdays
+        : defaultConfig.weekdays,
+    };
+  } catch (error) {
+    console.warn('No se pudo leer la configuración institucional.', error);
+    return defaultConfig;
+  }
+}
+
+export function saveInstitutionalConfig(config = {}) {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  const normalizedConfig = {
+    startHour: config.startHour ?? SCHOOL_RESERVATION_WINDOW.start,
+    endHour: config.endHour ?? SCHOOL_RESERVATION_WINDOW.end,
+    weekdays: Array.isArray(config.weekdays) && config.weekdays.length ? config.weekdays : SCHOOL_RESERVATION_WINDOW.allowedWeekdays,
+    requireApproval: config.requireApproval ?? true,
+  };
+
+  localStorage.setItem('config-reservas', JSON.stringify(normalizedConfig));
+  return normalizedConfig;
+}
+
+export function getExceptionalDates() {
+  if (typeof window === 'undefined') {
+    return [];
+  }
+
+  try {
+    const rawDates = localStorage.getItem('excepciones-reservas');
+    if (!rawDates) {
+      return [];
+    }
+
+    const parsedDates = JSON.parse(rawDates);
+    return Array.isArray(parsedDates)
+      ? parsedDates.map((date) => String(date).slice(0, 10)).filter(Boolean)
+      : [];
+  } catch (error) {
+    console.warn('No se pudieron leer las fechas extraordinarias.', error);
+    return [];
+  }
+}
+
+export function saveExceptionalDates(dates = []) {
+  if (typeof window === 'undefined') {
+    return [];
+  }
+
+  const normalizedDates = [...new Set((dates ?? []).map((date) => String(date).slice(0, 10)).filter(Boolean))];
+  localStorage.setItem('excepciones-reservas', JSON.stringify(normalizedDates));
+  return normalizedDates;
+}
+
 export function getMinutes(value) {
   if (!value || typeof value !== 'string') {
     return 0;
@@ -47,17 +133,72 @@ export function getMinutes(value) {
   return hours * 60 + minutes;
 }
 
+export function getDateDayName(dateValue) {
+  if (!dateValue) {
+    return null;
+  }
+
+  const normalized = typeof dateValue === 'string' && dateValue.includes('T') ? dateValue : `${dateValue}T12:00:00`;
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  const dayNames = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+  return dayNames[parsed.getDay()];
+}
+
+export function isSchoolDayAllowed(dateValue, exceptionalDates = []) {
+  const dayName = getDateDayName(dateValue);
+  if (!dayName) {
+    return false;
+  }
+
+  if (SCHOOL_RESERVATION_WINDOW.allowedWeekdays.includes(dayName)) {
+    return true;
+  }
+
+  const normalizedDate = String(dateValue).slice(0, 10);
+  return exceptionalDates.some((date) => String(date).slice(0, 10) === normalizedDate);
+}
+
+export function isReservationWindowAllowed({ date = '', horaInicio = '', horaFin = '', exceptionalDates = [] } = {}) {
+  if (!date || !horaInicio || !horaFin) {
+    return false;
+  }
+
+  const startMinutes = getMinutes(horaInicio);
+  const endMinutes = getMinutes(horaFin);
+  const startLimit = getMinutes(SCHOOL_RESERVATION_WINDOW.start);
+  const endLimit = getMinutes(SCHOOL_RESERVATION_WINDOW.end);
+
+  if (startMinutes < startLimit || endMinutes > endLimit || endMinutes <= startMinutes) {
+    return false;
+  }
+
+  if (!isSchoolDayAllowed(date, exceptionalDates)) {
+    return false;
+  }
+
+  return true;
+}
+
 export function overlaps(startA, endA, startB, endB) {
   return getMinutes(startA) < getMinutes(endB) && getMinutes(endA) > getMinutes(startB);
 }
 
-export function buildHourSlots({ startHour = 6, endHour = 22, stepMinutes = 60 } = {}) {
+export function buildHourSlots({ startHour = 6, endHour = 18, stepMinutes = 60 } = {}) {
   const slots = [];
 
   for (let hour = startHour; hour < endHour; hour += stepMinutes / 60) {
     const start = `${String(hour).padStart(2, '0')}:00`;
     const nextHour = hour + stepMinutes / 60;
     const end = `${String(nextHour).padStart(2, '0')}:00`;
+
+    if (getMinutes(end) > endHour * 60) {
+      break;
+    }
+
     slots.push({ start, end, label: `${start} - ${end}` });
   }
 
@@ -80,10 +221,11 @@ export function validateAcademicReservation({
   reservations = [],
   selectedUserId = null,
   selectedAulaId = null,
-  fecha = "",
-  horaInicio = "",
-  horaFin = "",
+  fecha = '',
+  horaInicio = '',
+  horaFin = '',
   currentReservationId = null,
+  exceptionalDates = [],
 } = {}) {
   if (!fecha) {
     return { valid: false, message: 'Debes seleccionar la fecha de la reserva.' };
@@ -102,6 +244,23 @@ export function validateAcademicReservation({
 
   if (!selectedUserId || !selectedAulaId) {
     return { valid: false, message: 'Debes seleccionar docente y aula antes de guardar.' };
+  }
+
+  if (!isReservationWindowAllowed({ date: fecha, horaInicio, horaFin, exceptionalDates })) {
+    const dayName = getDateDayName(fecha);
+    const hasException = exceptionalDates.some((date) => String(date).slice(0, 10) === String(fecha).slice(0, 10));
+
+    if (!dayName || !SCHOOL_RESERVATION_WINDOW.allowedWeekdays.includes(dayName) && !hasException) {
+      return {
+        valid: false,
+        message: 'Las reservas ordinarias solo se permiten de lunes a viernes. Los sábados, domingos y horarios fuera del rango 06:00 a 18:00 requieren autorización administrativa.',
+      };
+    }
+
+    return {
+      valid: false,
+      message: 'La reserva debe quedar dentro del horario institucional autorizado: de 06:00 a 18:00.',
+    };
   }
 
   const filteredReservations = (reservations ?? []).filter((reservation) => {
