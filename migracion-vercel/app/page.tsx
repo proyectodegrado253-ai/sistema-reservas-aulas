@@ -154,11 +154,7 @@ export default function HomePage() {
             </div>
 
             <div className="creator-photo-card">
-              <img src="/creator-group.png" alt="Grupo de creadores del proyecto" />
-            </div>
-
-            <div className="creator-photo-card">
-              <img src="/presentation-event.png" alt="Foto de evento de presentación" />
+              <img src="/creator-group.png" alt="Creadores del proyecto" />
             </div>
           </div>
         </section>
